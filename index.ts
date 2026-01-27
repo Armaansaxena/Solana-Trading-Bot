@@ -11,9 +11,10 @@ import {
 } from "@solana/web3.js";
 import bs58 from "bs58";
 import * as dotenv from "dotenv";
-import { User } from "./models/User";
-import { connectDB } from "./db";
 import { encrypt, decrypt } from "./utils/crypto";
+import { createServer } from "http";
+import { PrismaClient } from "@prisma/client";
+const prisma = new PrismaClient();
 
 dotenv.config();
 
@@ -25,7 +26,7 @@ interface SessionData {
     sendAmount?: number;
 }
 
-// Initialize bot with environment variable
+// Initialize bot
 const BOT_TOKEN = process.env.BOT_TOKEN;
 if (!BOT_TOKEN) {
     throw new Error("BOT_TOKEN is not defined in environment variables");
@@ -34,7 +35,7 @@ if (!BOT_TOKEN) {
 const bot = new Telegraf(BOT_TOKEN);
 const connection = new Connection(clusterApiUrl("devnet"), "confirmed");
 
-// Session storage (for conversation state only)
+// Session storage
 const SESSION: Record<number, SessionData> = {};
 
 // --- Helper Functions ---
@@ -45,10 +46,11 @@ async function getBalance(publicKey: PublicKey): Promise<number> {
 }
 
 async function getUserKeypair(telegramId: number): Promise<Keypair | null> {
-    const user = await User.findOne({ telegramId });
+    const user = await prisma.user.findUnique({
+        where: { telegramId: BigInt(telegramId) }
+    });
     if (!user) return null;
 
-    // Decrypt the private key
     const decryptedKey = decrypt(user.iv, user.encryptedKey);
     const secretKeyArray = bs58.decode(decryptedKey);
     
@@ -127,19 +129,14 @@ bot.command('about', async (ctx) => {
         "ℹ️ *About Solana Trading Bot*\n\n" +
         "🤖 *Version:* 1.0.0\n" +
         "⚡ *Network:* Solana Devnet\n" +
-        "🔐 *Security:* Military-grade encryption\n\n" +
+        "🔐 *Security:* AES-256 encryption\n" +
+        "🗄️ *Database:* MongoDB\n\n" +
         "🌟 *Features:*\n" +
         "✅ Instant wallet generation\n" +
         "✅ Secure key management\n" +
         "✅ Fast SOL transfers\n" +
         "✅ Real-time balance tracking\n" +
-        "✅ Export & backup functionality\n\n" +
-        "🛡️ *Your Security:*\n" +
-        "• Keys encrypted in database\n" +
-        "• AES-256 encryption\n" +
-        "• Auto-delete sensitive data\n\n" +
-        "📞 *Support:* @YourSupportUsername\n" +
-        "🌐 *Website:* yourwebsite.com";
+        "✅ Export & backup functionality";
     
     return ctx.replyWithMarkdown(aboutText, mainKeyboard());
 });
@@ -159,32 +156,38 @@ bot.action('generate_wallet', async (ctx) => {
     const userId = ctx.from!.id;
 
     try {
-        // Check if user already has a wallet
-        const existingUser = await User.findOne({ telegramId: userId });
+        // 1. Check if user already exists in Postgres
+        // We use BigInt(userId) because Telegram IDs can exceed standard Integer limits
+        const existingUser = await prisma.user.findUnique({
+            where: { telegramId: BigInt(userId) }
+        });
+
         if (existingUser) {
             const balance = await getBalance(new PublicKey(existingUser.publicKey));
             return ctx.replyWithMarkdown(
                 `⚠️ *Wallet Already Exists!*\n\n` +
                 `📍 *Public Key:*\n\`${existingUser.publicKey}\`\n\n` +
                 `💰 *Balance:* ${balance.toFixed(4)} SOL\n\n` +
-                `_Use the menu to manage your wallet_`,
+                `_Use the menu below to manage your assets._`,
                 postWalletKeyboard()
             );
         }
 
-        // 1. Generate Keypair
+        // 2. Generate a new Solana Keypair
         const keypair = Keypair.generate();
         const secretKeyStr = bs58.encode(keypair.secretKey);
 
-        // 2. Encrypt Private Key
+        // 3. Encrypt the Private Key using your crypto.ts utility
         const { iv, content } = encrypt(secretKeyStr);
 
-        // 3. Save to MongoDB
-        await User.create({
-            telegramId: userId,
-            publicKey: keypair.publicKey.toBase58(),
-            encryptedKey: content,
-            iv: iv
+        // 4. Save to Postgres using Prisma
+        await prisma.user.create({
+            data: {
+                telegramId: BigInt(userId),
+                publicKey: keypair.publicKey.toBase58(),
+                encryptedKey: content,
+                iv: iv
+            }
         });
 
         const balance = await getBalance(keypair.publicKey);
@@ -193,21 +196,22 @@ bot.action('generate_wallet', async (ctx) => {
             `✅ *Wallet Created & Secured!*\n\n` +
             `📍 *Public Key:*\n\`${keypair.publicKey.toBase58()}\`\n\n` +
             `💰 *Balance:* ${balance.toFixed(4)} SOL\n\n` +
-            `🔐 _Your private key is encrypted with AES-256 and stored securely in MongoDB._\n\n` +
-            `🚰 Get free SOL: [Solana Faucet](https://faucet.solana.com)`,
+            `🔐 _Your private key is AES-256 encrypted and stored in your private Render Postgres instance._\n\n` +
+            `🚰 *Need Funds?* [Solana Faucet](https://faucet.solana.com)`,
             postWalletKeyboard()
         );
+
     } catch (error) {
-        console.error("Wallet generation error:", error);
-        return ctx.reply("❌ Failed to create wallet. Please try again.");
+        console.error("❌ Wallet generation error:", error);
+        return ctx.reply("❌ Failed to create wallet. Please try again later.");
     }
 });
-
 bot.action('show_public_key', async (ctx) => {
     const userId = ctx.from!.id;
-
     try {
-        const user = await User.findOne({ telegramId: userId });
+        const user = await prisma.user.findUnique({
+            where: { telegramId: BigInt(userId) }
+        });
         
         if (!user) {
             await ctx.answerCbQuery("❌ No wallet found");
@@ -228,10 +232,10 @@ bot.action('show_public_key', async (ctx) => {
 
 bot.action('check_balance', async (ctx) => {
     const userId = ctx.from!.id;
-
     try {
-        // Get user data from MongoDB
-        const user = await User.findOne({ telegramId: userId });
+        const user = await prisma.user.findUnique({
+            where: { telegramId: BigInt(userId) }
+        });
         
         if (!user) {
             await ctx.answerCbQuery("❌ No wallet found");
@@ -239,9 +243,7 @@ bot.action('check_balance', async (ctx) => {
         }
 
         await ctx.answerCbQuery("Checking balance...");
-        
-        const publicKey = new PublicKey(user.publicKey);
-        const balance = await getBalance(publicKey);
+        const balance = await getBalance(new PublicKey(user.publicKey));
         
         return ctx.replyWithMarkdown(
             `💰 *Wallet Balance*\n\n` +
@@ -252,7 +254,7 @@ bot.action('check_balance', async (ctx) => {
         );
     } catch (error) {
         console.error("Balance check error:", error);
-        return ctx.reply("❌ Error checking balance. Try again.");
+        return ctx.reply("❌ Error checking balance.");
     }
 });
 
@@ -281,7 +283,6 @@ bot.action('confirm_show_private', async (ctx) => {
         await ctx.answerCbQuery();
         const secretKey = bs58.encode(keypair.secretKey);
         
-        // Create export file
         const exportData = 
             `SOLANA WALLET EXPORT\n` +
             `====================\n\n` +
@@ -297,7 +298,6 @@ bot.action('confirm_show_private', async (ctx) => {
             `• Store this file in a secure, encrypted location\n` +
             `• Delete this message immediately after saving\n`;
         
-        // Send file
         await ctx.replyWithDocument(
             {
                 source: Buffer.from(exportData),
@@ -320,7 +320,6 @@ bot.action('confirm_show_private', async (ctx) => {
             }
         );
 
-        // Quick copy message
         const msg = await ctx.replyWithMarkdown(
             `📋 *Quick Copy Format:*\n\n` +
             `*Private Key (Base58):*\n\`${secretKey}\`\n\n` +
@@ -331,7 +330,6 @@ bot.action('confirm_show_private', async (ctx) => {
             ])
         );
 
-        // Auto-delete after 2 minutes
         setTimeout(() => {
             try {
                 ctx.deleteMessage(msg.message_id);
@@ -386,7 +384,6 @@ bot.action('send_sol', async (ctx) => {
     }
 });
 
-// Handle text messages
 bot.on('text', async (ctx) => {
     const userId = ctx.from?.id;
     if (!userId) return;
@@ -405,7 +402,6 @@ bot.on('text', async (ctx) => {
             return ctx.reply("❌ No wallet found. Use /start to create one.");
         }
 
-        // Step 1: Amount input
         if (userSession?.waitingForAmount) {
             const input = ctx.message.text.trim().toLowerCase();
             const balance = await getBalance(userKeypair.publicKey);
@@ -455,7 +451,6 @@ bot.on('text', async (ctx) => {
             );
         }
 
-        // Step 2: Address input
         if (userSession?.waitingForAddress) {
             const address = ctx.message.text.trim();
             const sendAmount = userSession.sendAmount || 1;
@@ -530,22 +525,41 @@ bot.catch((err, ctx) => {
     ctx.reply('❌ An error occurred. Please try again.');
 });
 
+// Health check endpoint
+const healthServer = createServer((req, res) => {
+    if (req.url === '/health' || req.url === '/') {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ 
+            status: 'ok', 
+            bot: 'running',
+            database: 'mongodb',
+            timestamp: new Date().toISOString(),
+            uptime: process.uptime()
+        }));
+    } else {
+        res.writeHead(404, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Not Found' }));
+    }
+});
+
+const PORT = process.env.PORT || 3000;
+healthServer.listen(PORT, () => {
+    console.log(`🌐 Health check server running on port ${PORT}`);
+});
+
 // Initialize and launch bot
 async function startBot() {
     try {
-        // Connect to MongoDB
-        await connectDB();
+        await prisma.$connect();
+        console.log("✅ Connected to Postgres via Prisma");
         
         await bot.launch();
-        console.log("✅ Solana Trading Bot is running!");
-        console.log(`📍 Network: Solana Devnet`);
-        console.log(`🤖 Bot started at ${new Date().toLocaleString()}`);
+        console.log("✅ Solana Trading Bot is live!");
     } catch (error) {
-        console.error("Failed to start bot:", error);
+        console.error("❌ Database connection failed:", error);
         process.exit(1);
     }
 }
-
 startBot();
 
 process.once('SIGINT', () => bot.stop('SIGINT'));
