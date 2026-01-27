@@ -5,7 +5,7 @@ WORKDIR /app
 # Install OpenSSL
 RUN apt-get update && apt-get install -y openssl libssl-dev ca-certificates
 
-# Copy package files
+# Copy package files and Prisma schema
 COPY package.json ./
 COPY prisma ./prisma/
 
@@ -13,16 +13,18 @@ COPY prisma ./prisma/
 RUN npm install
 
 # 2. THE NUCLEAR FIX FOR MODULE ERROR: 
-# Manually create the missing module so Prisma doesn't crash during build.
+# Create the missing module file so Prisma doesn't crash during build.
 RUN mkdir -p node_modules/@prisma/client/runtime && \
     echo "module.exports = {};" > node_modules/@prisma/client/runtime/query_engine_bg.postgresql.wasm-base64.js
 
 # 3. THE FIX FOR 'RECEIVED UNDEFINED': 
-# We provide a hardcoded dummy URL ONLY for the generation step.
-# This prevents the "Received undefined" error.
+# We set a hardcoded dummy URL directly in the RUN command.
+# This ensures Prisma sees a STRING, not 'undefined'.
 ENV PRISMA_CLI_QUERY_ENGINE_TYPE=binary
 ENV PRISMA_CLIENT_ENGINE_TYPE=binary
-RUN DATABASE_URL="postgresql://placeholder:password@localhost:5432/db" npx prisma generate
+
+# Force the environment variable directly in the shell
+RUN DATABASE_URL="postgresql://db:db@localhost:5432/db" npx prisma generate
 
 # Stage 2: The Runtime (Bun)
 FROM oven/bun:latest
@@ -31,7 +33,7 @@ WORKDIR /app
 # Install runtime dependencies
 RUN apt-get update && apt-get install -y openssl libssl-dev ca-certificates curl && rm -rf /var/lib/apt/lists/*
 
-# Copy node_modules from builder
+# Copy cooked node_modules from builder
 COPY --from=builder /app/node_modules ./node_modules
 COPY . .
 
