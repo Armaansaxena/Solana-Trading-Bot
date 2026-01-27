@@ -1,23 +1,25 @@
-# Stage 1: The Builder (Use Full Node, not slim)
+# Stage 1: The Builder (Full Node)
 FROM node:20 AS builder
 WORKDIR /app
 
-# Install OpenSSL (Essential for Prisma engines)
-RUN apt-get update && apt-get install -y openssl libssl-dev ca-certificates && rm -rf /var/lib/apt/lists/*
+# Install OpenSSL
+RUN apt-get update && apt-get install -y openssl libssl-dev ca-certificates
 
-# Copy configuration and Prisma schema
+# Copy package files
 COPY package.json ./
 COPY prisma ./prisma/
 
-# 1. Use NPM for the build phase (it handles Prisma's engines better than Bun in Docker)
+# 1. Install dependencies
 RUN npm install
 
-# 2. THE FIX: Create the missing runtime folder and symlink the bridge
-# This bypasses the "Cannot find module ... wasm-base64.js" crash
+# 2. THE NUCLEAR FIX: 
+# If Prisma is looking for this file and crashing, we create it manually.
+# This satisfies the 'require' check so npx prisma generate can proceed.
 RUN mkdir -p node_modules/@prisma/client/runtime && \
-    ln -sf ../wasm.js node_modules/@prisma/client/runtime/wasm.js || true
+    touch node_modules/@prisma/client/runtime/query_engine_bg.postgresql.wasm-base64.js && \
+    echo "module.exports = {};" > node_modules/@prisma/client/runtime/query_engine_bg.postgresql.wasm-base64.js
 
-# 3. Force Binary engines and Generate the client
+# 3. Force Binary engines and Generate
 ENV PRISMA_CLI_QUERY_ENGINE_TYPE=binary
 ENV PRISMA_CLIENT_ENGINE_TYPE=binary
 RUN npx prisma generate
@@ -26,19 +28,18 @@ RUN npx prisma generate
 FROM oven/bun:latest
 WORKDIR /app
 
-# Install runtime dependencies for Solana/Postgres
+# Install runtime dependencies
 RUN apt-get update && apt-get install -y openssl libssl-dev ca-certificates curl && rm -rf /var/lib/apt/lists/*
 
-# Copy ONLY the node_modules and code from the builder
+# Copy node_modules from builder
 COPY --from=builder /app/node_modules ./node_modules
 COPY . .
 
-# Expose port
 EXPOSE 3000
 
-# Health check using your health server
+# Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
   CMD curl -f http://localhost:3000/health || exit 1
 
-# Start the bot
+# Run the bot
 CMD ["bun", "run", "index.ts"]
