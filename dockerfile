@@ -1,7 +1,7 @@
 # Use Bun as base image
 FROM oven/bun:latest
 
-# Install OpenSSL and Curl (Prisma needs these for the Binary engine)
+# Install curl and openssl (required for Prisma)
 RUN apt-get update && apt-get install -y openssl libssl-dev ca-certificates curl
 
 # Set working directory
@@ -10,20 +10,20 @@ WORKDIR /app
 # Copy package files
 COPY package.json bun.lockb* ./
 
-# Copy Prisma schema
-COPY prisma ./prisma/
-
 # Install dependencies
 RUN bun install
 
-# --- FIX START ---
-# Force Prisma to download the Linux binary engines
-ENV PRISMA_CLI_QUERY_ENGINE_TYPE=binary
-ENV PRISMA_CLIENT_ENGINE_TYPE=binary
+# Copy Prisma schema
+COPY prisma ./prisma/
 
-# Tell Prisma to look for the binary in the local node_modules
-# This prevents the WASM-base64 error
-RUN bunx prisma generate
+# --- FIX START ---
+# Force Prisma to generate a standard client that doesn't 
+# rely on broken WASM paths in Bun's Docker environment
+RUN bunx --bun prisma generate
+
+# Workaround for the "Cannot find module ... wasm-base64.js" error
+# We create a symlink to help Bun find the engine file
+RUN ln -sf ../wasm.js node_modules/@prisma/client/runtime/wasm.js || true
 # --- FIX END ---
 
 # Copy source code
