@@ -1,32 +1,21 @@
-# Use Bun as base image
+# Stage 1: Generate Prisma Client using Node (The most stable way)
+FROM node:20-slim AS builder
+WORKDIR /app
+COPY package.json bun.lockb* ./
+COPY prisma ./prisma/
+# Install only what's needed for Prisma
+RUN npm install -g bun && bun install
+RUN npx prisma generate
+
+# Stage 2: Run the bot using Bun (The high-performance way)
 FROM oven/bun:latest
-
-# Install curl and openssl (required for Prisma)
-RUN apt-get update && apt-get install -y openssl libssl-dev ca-certificates curl
-
-# Set working directory
 WORKDIR /app
 
-# Copy package files
-COPY package.json bun.lockb* ./
+# Install OpenSSL (Required by Prisma to talk to Postgres)
+RUN apt-get update && apt-get install -y openssl libssl-dev ca-certificates curl && rm -rf /var/lib/apt/lists/*
 
-# Install dependencies
-RUN bun install
-
-# Copy Prisma schema
-COPY prisma ./prisma/
-
-# --- FIX START ---
-# Force Prisma to generate a standard client that doesn't 
-# rely on broken WASM paths in Bun's Docker environment
-RUN bunx --bun prisma generate
-
-# Workaround for the "Cannot find module ... wasm-base64.js" error
-# We create a symlink to help Bun find the engine file
-RUN ln -sf ../wasm.js node_modules/@prisma/client/runtime/wasm.js || true
-# --- FIX END ---
-
-# Copy source code
+# Copy node_modules (with generated Prisma client) and source code from builder
+COPY --from=builder /app/node_modules ./node_modules
 COPY . .
 
 # Expose port
