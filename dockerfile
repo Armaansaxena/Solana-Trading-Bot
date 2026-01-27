@@ -1,43 +1,39 @@
-# Use a full Node.js image to ensure all module paths are resolved correctly
-FROM node:20
-
-# Install Bun globally inside the Node environment
-RUN npm install -g bun
-
-# Install OpenSSL and system essentials
-RUN apt-get update && apt-get install -y openssl libssl-dev ca-certificates curl && rm -rf /var/lib/apt/lists/*
-
-# Set working directory
+# Use a full Node image for the build stage to ensure Prisma downloads everything correctly
+FROM node:20 AS builder
 WORKDIR /app
 
-# Copy package files
-COPY package.json bun.lockb* ./
+# Install system dependencies
+RUN apt-get update && apt-get install -y openssl libssl-dev ca-certificates
 
-# 1. Install dependencies using Bun
-# 2. Fix: Manual symlink for the WASM bridge error
-RUN bun install && \
-    mkdir -p node_modules/@prisma/client/runtime && \
-    ln -sf ../wasm.js node_modules/@prisma/client/runtime/wasm.js || true
-
-# Copy Prisma schema
+# Copy package files and Prisma schema
+COPY package.json ./
 COPY prisma ./prisma/
 
-# Force the Binary engine before generating
-ENV PRISMA_CLI_QUERY_ENGINE_TYPE=binary
-ENV PRISMA_CLIENT_ENGINE_TYPE=binary
+# Use NPM to install - it handles Prisma's engines and WASM bridge much better than Bun
+RUN npm install
 
-# Generate Prisma Client
-RUN bunx prisma generate
+# --- THE CRITICAL FIX ---
+# Force Prisma to generate a C-binding library engine instead of WASM
+ENV PRISMA_CLIENT_ENGINE_TYPE=library
+RUN npx prisma generate
 
-# Copy the rest of your source code
+# Final Stage: High performance Bun runtime
+FROM oven/bun:latest
+WORKDIR /app
+
+# Install runtime dependencies
+RUN apt-get update && apt-get install -y openssl libssl-dev ca-certificates curl && rm -rf /var/lib/apt/lists/*
+
+# Copy the generated client and node_modules from the NPM builder stage
+COPY --from=builder /app/node_modules ./node_modules
 COPY . .
 
 # Expose port
 EXPOSE 3000
 
-# Health check using the bot's health endpoint
+# Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
   CMD curl -f http://localhost:3000/health || exit 1
 
-# Run the bot using Bun
+# Run the bot with Bun
 CMD ["bun", "run", "index.ts"]
