@@ -1,43 +1,40 @@
-# Stage 1: The Builder (Standard Node)
+# Stage 1: Build & Generate (Using Node.js)
 FROM node:20 AS builder
 WORKDIR /app
 
-# Install OpenSSL (Essential for Prisma engines)
-RUN apt-get update && apt-get install -y openssl libssl-dev ca-certificates && rm -rf /var/lib/apt/lists/*
+# Install OpenSSL (Essential for Prisma)
+RUN apt-get update && apt-get install -y openssl libssl-dev ca-certificates
 
-# Copy configuration and Prisma schema
+# Copy config and schema
 COPY package.json ./
 COPY prisma ./prisma/
 
-# Use NPM to install - it handles Prisma's engine downloads more reliably than Bun in Docker
+# Install dependencies using NPM (much more stable for Prisma generation)
 RUN npm install
 
-# --- WORKAROUND FOR PRISMA WASM ERROR ---
-# This symlink fixes the "Cannot find module ... wasm-base64.js" bug 
-# by mapping the expected path to the actual file location in Bun/Node
-RUN mkdir -p node_modules/@prisma/client/runtime && \
-    ln -sf ../wasm.js node_modules/@prisma/client/runtime/wasm.js || true
-
-# Force Binary engine and Generate
+# --- THE MAGIC FIX ---
+# Force Prisma to use the Binary engine and generate the client
 ENV PRISMA_CLI_QUERY_ENGINE_TYPE=binary
 ENV PRISMA_CLIENT_ENGINE_TYPE=binary
 RUN npx prisma generate
 
-# Stage 2: The Runtime (Bun)
+# Stage 2: Runtime (Using Bun)
 FROM oven/bun:latest
 WORKDIR /app
 
-# Install runtime dependencies
+# Install runtime dependencies for Solana & PostgreSQL
 RUN apt-get update && apt-get install -y openssl libssl-dev ca-certificates curl && rm -rf /var/lib/apt/lists/*
 
-# Copy cooked node_modules and source code
+# Copy the "already cooked" node_modules and generated client from the builder
 COPY --from=builder /app/node_modules ./node_modules
 COPY . .
 
+# Expose port for Render health check
 EXPOSE 3000
 
-# Health check using the bot's health endpoint
+# Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
   CMD curl -f http://localhost:3000/health || exit 1
 
+# Start the bot with Bun
 CMD ["bun", "run", "index.ts"]
