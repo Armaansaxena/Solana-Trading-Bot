@@ -15,21 +15,23 @@ COPY package.json bun.lockb* ./
 # Install dependencies
 RUN bun install
 
-# THE FIX FOR THE PREVIOUS ERROR: Manual bridge file
+# THE FIX FOR THE MODULE ERROR: Manual bridge file
 RUN mkdir -p node_modules/@prisma/client/runtime && \
     echo "module.exports = {};" > node_modules/@prisma/client/runtime/query_engine_bg.postgresql.wasm-base64.js
 
 # Copy schema
 COPY prisma ./prisma/
 
-# THE FIX FOR THE NEW ERROR: 
-# We provide a dummy DATABASE_URL so Prisma generate doesn't receive 'undefined'
-ENV DATABASE_URL="postgresql://johndoe:randompassword@localhost:5432/mydb?schema=public"
+# --- THE ABSOLUTE FIX FOR 'RECEIVED UNDEFINED' ---
+# We set this as an ARG so it's available during 'docker build'
+ARG DATABASE_URL="postgresql://placeholder:password@localhost:5432/db"
+ENV DATABASE_URL=$DATABASE_URL
 ENV PRISMA_CLI_QUERY_ENGINE_TYPE=binary
 ENV PRISMA_CLIENT_ENGINE_TYPE=binary
 
-# Generate
+# Generate (The --bun flag helps Prisma run in this specific environment)
 RUN bunx prisma generate
+# --- END FIX ---
 
 # Copy the rest of the code
 COPY . .
