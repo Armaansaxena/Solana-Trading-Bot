@@ -1,31 +1,35 @@
-# Use a full Node.js image to ensure all module paths are resolved correctly
-FROM node:20
-
-# Install Bun globally inside the Node environment
-RUN npm install -g bun
-
-# Install OpenSSL and dependencies
-RUN apt-get update && apt-get install -y openssl libssl-dev ca-certificates curl
-
-# Set working directory
+# Use a full Node image for the build to ensure Prisma engine downloads properly
+FROM node:20 AS builder
 WORKDIR /app
 
-# Copy package files
+# Install Bun inside the Node environment
+RUN npm install -g bun
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y openssl libssl-dev ca-certificates
+
+# Copy config and schema
 COPY package.json bun.lockb* ./
-
-# Install dependencies using Bun
-RUN bun install
-
-# Copy Prisma schema
 COPY prisma ./prisma/
 
-# Force the Binary engine and generate
-# Setting these before generation ensures Prisma uses the stable executable
+# Use Bun to install, but because we are in a Node environment, 
+# Prisma will download the correct Linux binaries
+RUN bun install
+
+# Force binary engine and generate
 ENV PRISMA_CLI_QUERY_ENGINE_TYPE=binary
 ENV PRISMA_CLIENT_ENGINE_TYPE=binary
 RUN bunx prisma generate
 
-# Copy the rest of your source code
+# Final Stage: High performance Bun runtime
+FROM oven/bun:latest
+WORKDIR /app
+
+# Install OpenSSL for the runtime
+RUN apt-get update && apt-get install -y openssl libssl-dev ca-certificates curl && rm -rf /var/lib/apt/lists/*
+
+# Copy the generated client and node_modules from the builder
+COPY --from=builder /app/node_modules ./node_modules
 COPY . .
 
 # Expose port
@@ -35,5 +39,5 @@ EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
   CMD curl -f http://localhost:3000/health || exit 1
 
-# Run the bot using Bun
+# Run the bot
 CMD ["bun", "run", "index.ts"]
