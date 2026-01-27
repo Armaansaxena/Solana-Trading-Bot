@@ -11,12 +11,9 @@ import {
 } from "@solana/web3.js";
 import bs58 from "bs58";
 import * as dotenv from "dotenv";
-// import { User } from "./models/User";
-// import { connectDB } from "./db";
-import { saveUserWallet } from "./db";
+import { User } from "./models/User";
+import { connectDB } from "./db";
 import { encrypt, decrypt } from "./utils/crypto";
-import { redis } from "./db";
-import { getUserWallet } from "./db";
 
 dotenv.config();
 
@@ -48,11 +45,11 @@ async function getBalance(publicKey: PublicKey): Promise<number> {
 }
 
 async function getUserKeypair(telegramId: number): Promise<Keypair | null> {
-    const user: any = await getUserWallet(telegramId); // Use 'any' here to simplify access
-    if (!user || !user.iv || !user.encryptedKey) return null;
+    const user = await User.findOne({ telegramId });
+    if (!user) return null;
 
-    // Cast the unknown properties to strings using 'as string'
-    const decryptedKey = decrypt(user.iv as string, user.encryptedKey as string);
+    // Decrypt the private key
+    const decryptedKey = decrypt(user.iv, user.encryptedKey);
     const secretKeyArray = bs58.decode(decryptedKey);
     
     return Keypair.fromSecretKey(secretKeyArray);
@@ -161,29 +158,48 @@ bot.action('generate_wallet', async (ctx) => {
     await ctx.answerCbQuery('Generating wallet...');
     const userId = ctx.from!.id;
 
-    // 1. Generate Keypair
-    const keypair = Keypair.generate();
-    const secretKeyStr = bs58.encode(keypair.secretKey);
-
-    // 2. Encrypt Private Key
-    const { iv, content } = encrypt(secretKeyStr);
-
     try {
-        // 3. Save to Redis as a Hash
-        await saveUserWallet(userId, {
+        // Check if user already has a wallet
+        const existingUser = await User.findOne({ telegramId: userId });
+        if (existingUser) {
+            const balance = await getBalance(new PublicKey(existingUser.publicKey));
+            return ctx.replyWithMarkdown(
+                `⚠️ *Wallet Already Exists!*\n\n` +
+                `📍 *Public Key:*\n\`${existingUser.publicKey}\`\n\n` +
+                `💰 *Balance:* ${balance.toFixed(4)} SOL\n\n` +
+                `_Use the menu to manage your wallet_`,
+                postWalletKeyboard()
+            );
+        }
+
+        // 1. Generate Keypair
+        const keypair = Keypair.generate();
+        const secretKeyStr = bs58.encode(keypair.secretKey);
+
+        // 2. Encrypt Private Key
+        const { iv, content } = encrypt(secretKeyStr);
+
+        // 3. Save to MongoDB
+        await User.create({
+            telegramId: userId,
             publicKey: keypair.publicKey.toBase58(),
             encryptedKey: content,
             iv: iv
         });
 
+        const balance = await getBalance(keypair.publicKey);
+
         return ctx.replyWithMarkdown(
-            `✅ *Wallet Generated & Saved to Redis!*\n\n` +
-            `📍 *Public Key:* \`${keypair.publicKey.toBase58()}\`\n\n` +
-            `💰 *Balance:* 0 SOL`
+            `✅ *Wallet Created & Secured!*\n\n` +
+            `📍 *Public Key:*\n\`${keypair.publicKey.toBase58()}\`\n\n` +
+            `💰 *Balance:* ${balance.toFixed(4)} SOL\n\n` +
+            `🔐 _Your private key is encrypted with AES-256 and stored securely in MongoDB._\n\n` +
+            `🚰 Get free SOL: [Solana Faucet](https://faucet.solana.com)`,
+            postWalletKeyboard()
         );
     } catch (error) {
-        console.error("Redis Error:", error);
-        return ctx.reply("❌ Database connection failed.");
+        console.error("Wallet generation error:", error);
+        return ctx.reply("❌ Failed to create wallet. Please try again.");
     }
 });
 
@@ -191,7 +207,7 @@ bot.action('show_public_key', async (ctx) => {
     const userId = ctx.from!.id;
 
     try {
-        const user = await getUserWallet(userId);
+        const user = await User.findOne({ telegramId: userId });
         
         if (!user) {
             await ctx.answerCbQuery("❌ No wallet found");
@@ -212,30 +228,31 @@ bot.action('show_public_key', async (ctx) => {
 
 bot.action('check_balance', async (ctx) => {
     const userId = ctx.from!.id;
-    
-    // 1. Get data from Redis (NOT MongoDB)
-    const userData = await getUserWallet(userId);
 
-    if (!userData || !userData.publicKey) {
-        await ctx.answerCbQuery("❌ No wallet found");
-        return ctx.reply("❌ Please generate a wallet first.", mainKeyboard());
-    }
-
-    await ctx.answerCbQuery("Checking balance...");
-    
     try {
-        const pubKey = new PublicKey(userData.publicKey as string);
-        const balance = await getBalance(pubKey);
+        // Get user data from MongoDB
+        const user = await User.findOne({ telegramId: userId });
+        
+        if (!user) {
+            await ctx.answerCbQuery("❌ No wallet found");
+            return ctx.reply("❌ Generate a wallet first.", mainKeyboard());
+        }
+
+        await ctx.answerCbQuery("Checking balance...");
+        
+        const publicKey = new PublicKey(user.publicKey);
+        const balance = await getBalance(publicKey);
         
         return ctx.replyWithMarkdown(
             `💰 *Wallet Balance*\n\n` +
             `${balance.toFixed(4)} SOL\n\n` +
-            `📍 Address:\n\`${userData.publicKey}\``,
+            `📍 Address:\n\`${user.publicKey}\`\n\n` +
+            `🚰 Need SOL? Visit [Solana Faucet](https://faucet.solana.com)`,
             postWalletKeyboard()
         );
     } catch (error) {
         console.error("Balance check error:", error);
-        return ctx.reply("❌ Error connecting to Solana. Try again.");
+        return ctx.reply("❌ Error checking balance. Try again.");
     }
 });
 
@@ -516,19 +533,15 @@ bot.catch((err, ctx) => {
 // Initialize and launch bot
 async function startBot() {
     try {
-        // Test Redis connection
-        const pong = await redis.ping();
-        if (pong !== "PONG") {
-            throw new Error("Could not connect to Redis");
-        }
+        // Connect to MongoDB
+        await connectDB();
         
-        console.log("✅ Redis connection verified!");
-
         await bot.launch();
         console.log("✅ Solana Trading Bot is running!");
         console.log(`📍 Network: Solana Devnet`);
+        console.log(`🤖 Bot started at ${new Date().toLocaleString()}`);
     } catch (error) {
-        console.error("❌ Failed to start bot:", error);
+        console.error("Failed to start bot:", error);
         process.exit(1);
     }
 }

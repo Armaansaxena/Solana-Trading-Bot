@@ -1,7 +1,7 @@
 import crypto from "crypto";
 
 const ALGORITHM = "aes-256-cbc";
-const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY; // Must be 32 characters
+const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY;
 
 if (!ENCRYPTION_KEY || ENCRYPTION_KEY.length !== 32) {
     throw new Error("ENCRYPTION_KEY must be exactly 32 characters long in your .env file!");
