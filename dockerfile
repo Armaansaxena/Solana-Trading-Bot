@@ -1,26 +1,22 @@
-# Stage 1: The Builder (Use Full Node)
+# Stage 1: Build
 FROM node:20 AS builder
 WORKDIR /app
 
-# Install OpenSSL
+# Install OpenSSL 3.0
 RUN apt-get update && apt-get install -y openssl libssl-dev ca-certificates
 
 COPY package.json ./
-# Use NPM to avoid Bun's engine-skipping behavior
+# Use NPM to ensure all Prisma engine components are downloaded
 RUN npm install
 
 COPY prisma ./prisma/
 
-# THE NUCLEAR FIX: Create a .env file PHYSICALLY in the container.
-# This is the only way to guarantee Prisma 'sees' a string during build.
-RUN echo 'DATABASE_URL="postgresql://db:db@localhost:5432/db"' > .env
-
-# Generate without engines to bypass the WASM/Buffer crash
-ENV PRISMA_CLI_QUERY_ENGINE_TYPE=binary
-ENV PRISMA_CLIENT_ENGINE_TYPE=binary
+# Force Prisma to use the Library engine (Standard Node-API)
+# This avoids the WASM errors entirely
+ENV PRISMA_CLIENT_ENGINE_TYPE=library
 RUN npx prisma generate
 
-# Stage 2: The Runtime (Bun)
+# Stage 2: Runtime
 FROM oven/bun:latest
 WORKDIR /app
 
@@ -29,7 +25,6 @@ RUN apt-get update && apt-get install -y openssl libssl-dev ca-certificates curl
 
 # Copy from builder
 COPY --from=builder /app/node_modules ./node_modules
-COPY --from=builder /app/.env ./.env
 COPY . .
 
 EXPOSE 3000
@@ -38,5 +33,5 @@ EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
   CMD curl -f http://localhost:3000/health || exit 1
 
-# Start the bot
+# Run the bot with Bun
 CMD ["bun", "run", "index.ts"]
