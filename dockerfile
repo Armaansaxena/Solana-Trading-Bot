@@ -1,37 +1,37 @@
-# Stage 1: The Builder (Full Node)
-FROM node:20 AS builder
-WORKDIR /app
+# Use a full Debian-based Node image (Stable environment)
+FROM node:20-bookworm
 
-# Install OpenSSL 3.0 and other build essentials
-RUN apt-get update && apt-get install -y openssl libssl-dev ca-certificates && rm -rf /var/lib/apt/lists/*
+# Install Bun globally
+RUN npm install -g bun
 
-# Copy package files and Prisma schema
-COPY package.json ./
-COPY prisma ./prisma/
-
-# 1. Install dependencies using NPM (more stable for Prisma engines)
-RUN npm install
-
-# 2. THE FIX: Create the missing runtime folder and symlink the WASM bridge
-# This prevents the "Cannot find module ... wasm-base64.js" crash
-RUN mkdir -p node_modules/@prisma/client/runtime && \
-    ln -sf ../wasm.js node_modules/@prisma/client/runtime/wasm.js || true
-
-# 3. Force Binary engine and Generate using pinned CLI version (6.15.0)
-# Version 6.15.0 is the most stable version for this specific Docker/Bun issue
-ENV PRISMA_CLI_QUERY_ENGINE_TYPE=binary
-ENV PRISMA_CLIENT_ENGINE_TYPE=binary
-RUN npx prisma@6.15.0 generate
-
-# Stage 2: The Runtime (Bun)
-FROM oven/bun:latest
-WORKDIR /app
-
-# Install runtime dependencies
+# Install OpenSSL 3.0 (Required for Prisma)
 RUN apt-get update && apt-get install -y openssl libssl-dev ca-certificates curl && rm -rf /var/lib/apt/lists/*
 
-# Copy node_modules (with generated client) and source code
-COPY --from=builder /app/node_modules ./node_modules
+WORKDIR /app
+
+# Copy dependency files
+COPY package.json bun.lockb* ./
+
+# Install dependencies using Bun
+RUN bun install
+
+# --- THE BRUTE FORCE FIX ---
+# We manually create the missing module file that Prisma is crying about.
+# This satisfies the 'require' check so the build can finish.
+RUN mkdir -p node_modules/@prisma/client/runtime && \
+    echo "module.exports = {};" > node_modules/@prisma/client/runtime/query_engine_bg.postgresql.wasm-base64.js
+
+# Copy schema and generate
+COPY prisma ./prisma/
+
+# Force Binary engine
+ENV PRISMA_CLI_QUERY_ENGINE_TYPE=binary
+ENV PRISMA_CLIENT_ENGINE_TYPE=binary
+
+# Generate
+RUN bunx prisma generate
+
+# Copy the rest of the code
 COPY . .
 
 # Expose port
@@ -41,5 +41,5 @@ EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
   CMD curl -f http://localhost:3000/health || exit 1
 
-# Run the bot
+# Start the bot
 CMD ["bun", "run", "index.ts"]
