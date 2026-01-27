@@ -1,34 +1,31 @@
-# Use a full Node image for the build to ensure Prisma engine downloads properly
+# Stage 1: The "Cook" - Use Node + NPM to handle Prisma's complex dependencies
 FROM node:20 AS builder
 WORKDIR /app
 
-# Install Bun inside the Node environment
-RUN npm install -g bun
-
-# Install system dependencies
+# Install OpenSSL (Essential for Prisma)
 RUN apt-get update && apt-get install -y openssl libssl-dev ca-certificates
 
-# Copy config and schema
-COPY package.json bun.lockb* ./
+# Copy only the files needed for installation
+COPY package.json ./
 COPY prisma ./prisma/
 
-# Use Bun to install, but because we are in a Node environment, 
-# Prisma will download the correct Linux binaries
-RUN bun install
+# ⚠️ CRITICAL: Use NPM for the build phase. 
+# NPM downloads the missing WASM/Binary files that Bun skips.
+RUN npm install
 
-# Force binary engine and generate
+# Force the stable Binary engine and generate the client
 ENV PRISMA_CLI_QUERY_ENGINE_TYPE=binary
 ENV PRISMA_CLIENT_ENGINE_TYPE=binary
-RUN bunx prisma generate
+RUN npx prisma generate
 
-# Final Stage: High performance Bun runtime
+# Stage 2: The "Serve" - High-performance Bun runtime
 FROM oven/bun:latest
 WORKDIR /app
 
-# Install OpenSSL for the runtime
+# Install runtime dependencies
 RUN apt-get update && apt-get install -y openssl libssl-dev ca-certificates curl && rm -rf /var/lib/apt/lists/*
 
-# Copy the generated client and node_modules from the builder
+# Copy the "cooked" node_modules (with the generated client) from the builder
 COPY --from=builder /app/node_modules ./node_modules
 COPY . .
 
@@ -39,5 +36,5 @@ EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
   CMD curl -f http://localhost:3000/health || exit 1
 
-# Run the bot
+# Run the bot with Bun
 CMD ["bun", "run", "index.ts"]
