@@ -4,7 +4,7 @@ FROM node:20-bookworm
 # Install Bun globally
 RUN npm install -g bun
 
-# Install OpenSSL 3.0
+# Install OpenSSL 3.0 (Required for Prisma)
 RUN apt-get update && apt-get install -y openssl libssl-dev ca-certificates curl && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -23,14 +23,16 @@ RUN mkdir -p node_modules/@prisma/client/runtime && \
 COPY prisma ./prisma/
 
 # --- THE ABSOLUTE FIX FOR 'RECEIVED UNDEFINED' ---
-# We set this as an ARG so it's available during 'docker build'
+# 1. Define the ARG
 ARG DATABASE_URL="postgresql://placeholder:password@localhost:5432/db"
+# 2. Assign ARG to ENV so it's available in the shell
 ENV DATABASE_URL=$DATABASE_URL
+# 3. Force Binary engines
 ENV PRISMA_CLI_QUERY_ENGINE_TYPE=binary
 ENV PRISMA_CLIENT_ENGINE_TYPE=binary
 
-# Generate (The --bun flag helps Prisma run in this specific environment)
-RUN bunx prisma generate
+# Run generate using a direct shell to ensure ENV is picked up
+RUN DATABASE_URL=$DATABASE_URL bunx prisma generate
 # --- END FIX ---
 
 # Copy the rest of the code
