@@ -1,28 +1,29 @@
-# Stage 1: Generate Prisma Client using Node
+# Stage 1: Generate Prisma Client using Node & NPM
 FROM node:20-slim AS builder
 WORKDIR /app
 
-# Install OpenSSL and other essentials in the BUILDER stage
+# Install OpenSSL
 RUN apt-get update && apt-get install -y openssl libssl-dev ca-certificates && rm -rf /var/lib/apt/lists/*
 
-COPY package.json bun.lockb* ./
+COPY package.json ./
+# We use NPM here because it handles Prisma's WASM dependencies better than Bun during the build phase
+RUN npm install
+
 COPY prisma ./prisma/
 
-# Install dependencies
-RUN npm install -g bun && bun install
-
-# Force the engine type to library to prevent the WASM-base64 error
-ENV PRISMA_CLIENT_ENGINE_TYPE=library
+# Force the binary engine to bypass WASM entirely
+ENV PRISMA_CLI_QUERY_ENGINE_TYPE=binary
+ENV PRISMA_CLIENT_ENGINE_TYPE=binary
 RUN npx prisma generate
 
 # Stage 2: Run the bot using Bun
 FROM oven/bun:latest
 WORKDIR /app
 
-# Install OpenSSL in the RUNTIME stage
+# Install OpenSSL for runtime
 RUN apt-get update && apt-get install -y openssl libssl-dev ca-certificates curl && rm -rf /var/lib/apt/lists/*
 
-# Copy node_modules (with generated Prisma client) and source code from builder
+# Copy the generated client and node_modules from the NPM builder
 COPY --from=builder /app/node_modules ./node_modules
 COPY . .
 
