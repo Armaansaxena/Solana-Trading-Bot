@@ -1,8 +1,8 @@
 # Use Bun as base image
 FROM oven/bun:latest
 
-# Install OpenSSL (Required for Prisma engines to run in Linux)
-RUN apt-get update && apt-get install -y openssl libssl-dev ca-certificates
+# Install OpenSSL and Curl (Prisma needs these for the Binary engine)
+RUN apt-get update && apt-get install -y openssl libssl-dev ca-certificates curl
 
 # Set working directory
 WORKDIR /app
@@ -10,23 +10,26 @@ WORKDIR /app
 # Copy package files
 COPY package.json bun.lockb* ./
 
-# Copy Prisma schema first
+# Copy Prisma schema
 COPY prisma ./prisma/
 
 # Install dependencies
 RUN bun install
 
-# Force Prisma to use the Library engine (Standard for Bun/Node)
-# and avoid the WASM-base64 issue
-ENV PRISMA_CLIENT_ENGINE_TYPE=library
+# --- FIX START ---
+# Force Prisma to download the Linux binary engines
+ENV PRISMA_CLI_QUERY_ENGINE_TYPE=binary
+ENV PRISMA_CLIENT_ENGINE_TYPE=binary
 
-# Generate Prisma Client
+# Tell Prisma to look for the binary in the local node_modules
+# This prevents the WASM-base64 error
 RUN bunx prisma generate
+# --- FIX END ---
 
-# Copy the rest of your source code
+# Copy source code
 COPY . .
 
-# Expose port (Health check server)
+# Expose port
 EXPOSE 3000
 
 # Health check
