@@ -12,17 +12,17 @@ COPY prisma ./prisma/
 # 1. Install dependencies
 RUN npm install
 
-# 2. THE NUCLEAR FIX: 
-# If Prisma is looking for this file and crashing, we create it manually.
-# This satisfies the 'require' check so npx prisma generate can proceed.
+# 2. THE NUCLEAR FIX FOR MODULE ERROR: 
+# Manually create the missing module so Prisma doesn't crash during build.
 RUN mkdir -p node_modules/@prisma/client/runtime && \
-    touch node_modules/@prisma/client/runtime/query_engine_bg.postgresql.wasm-base64.js && \
     echo "module.exports = {};" > node_modules/@prisma/client/runtime/query_engine_bg.postgresql.wasm-base64.js
 
-# 3. Force Binary engines and Generate
+# 3. THE FIX FOR 'RECEIVED UNDEFINED': 
+# We provide a hardcoded dummy URL ONLY for the generation step.
+# This prevents the "Received undefined" error.
 ENV PRISMA_CLI_QUERY_ENGINE_TYPE=binary
 ENV PRISMA_CLIENT_ENGINE_TYPE=binary
-RUN npx prisma generate
+RUN DATABASE_URL="postgresql://placeholder:password@localhost:5432/db" npx prisma generate
 
 # Stage 2: The Runtime (Bun)
 FROM oven/bun:latest
