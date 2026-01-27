@@ -1,10 +1,10 @@
-# Use a full Debian-based Node image (Stable environment)
+# Use a full Debian-based Node image
 FROM node:20-bookworm
 
 # Install Bun globally
 RUN npm install -g bun
 
-# Install OpenSSL 3.0 (Required for Prisma)
+# Install OpenSSL 3.0
 RUN apt-get update && apt-get install -y openssl libssl-dev ca-certificates curl && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -12,19 +12,19 @@ WORKDIR /app
 # Copy dependency files
 COPY package.json bun.lockb* ./
 
-# Install dependencies using Bun
+# Install dependencies
 RUN bun install
 
-# --- THE BRUTE FORCE FIX ---
-# We manually create the missing module file that Prisma is crying about.
-# This satisfies the 'require' check so the build can finish.
+# THE FIX FOR THE PREVIOUS ERROR: Manual bridge file
 RUN mkdir -p node_modules/@prisma/client/runtime && \
     echo "module.exports = {};" > node_modules/@prisma/client/runtime/query_engine_bg.postgresql.wasm-base64.js
 
-# Copy schema and generate
+# Copy schema
 COPY prisma ./prisma/
 
-# Force Binary engine
+# THE FIX FOR THE NEW ERROR: 
+# We provide a dummy DATABASE_URL so Prisma generate doesn't receive 'undefined'
+ENV DATABASE_URL="postgresql://johndoe:randompassword@localhost:5432/mydb?schema=public"
 ENV PRISMA_CLI_QUERY_ENGINE_TYPE=binary
 ENV PRISMA_CLIENT_ENGINE_TYPE=binary
 
