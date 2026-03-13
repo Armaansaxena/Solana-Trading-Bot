@@ -4,8 +4,8 @@
   "description": "Telegram bot for Solana wallet management",
   "main": "index.ts",
   "scripts": {
-    "start": "ts-node index.ts",
-    "dev": "ts-node-dev --respawn index.ts",
+    "start": "npx tsx src/index.ts",
+    "dev": "npx tsx watch src/index.ts",
     "build": "tsc",
     "generate-key": "node -e \"console.log('ENCRYPTION_KEY=' + require('crypto').randomBytes(32).toString('hex'))\""
   },
@@ -18,20 +18,28 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "@jup-ag/api": "^6.0.48",
+    "@metaplex-foundation/mpl-token-metadata": "^3.4.0",
+    "@metaplex-foundation/umi": "^1.5.1",
+    "@metaplex-foundation/umi-bundle-defaults": "^1.5.1",
     "@prisma/client": "6.1.0",
+    "@solana/spl-token": "^0.4.14",
     "@solana/web3.js": "^1.95.8",
     "@upstash/redis": "^1.36.1",
     "bs58": "^5.0.0",
     "dotenv": "^17.2.3",
+    "groq-sdk": "^1.1.1",
     "pg": "^8.17.2",
     "telegraf": "^4.16.3"
   },
   "devDependencies": {
     "@types/node": "^20.17.10",
+    "@types/node-fetch": "^2.6.13",
     "@types/pg": "^8.16.0",
-    "prisma": "6.1.0",
+    "prisma": "^7.5.0",
     "ts-node": "^10.9.2",
     "ts-node-dev": "^2.0.0",
+    "tsx": "^4.21.0",
     "typescript": "^5.7.3"
   }
 }
