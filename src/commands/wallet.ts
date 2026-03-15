@@ -12,6 +12,7 @@ import {
 } from "@solana/web3.js";
 import { Markup } from "telegraf";
 import bs58 from "bs58";
+import { saveTransaction } from "../services/solana";
 
 export function registerWalletCommands() {
   bot.action("main_menu", async (ctx) => {
@@ -351,19 +352,22 @@ export function registerWalletCommands() {
 
   bot.on("text", async (ctx) => {
     const userId = ctx.from?.id;
-    const { handleLaunchText } = await import("./launch");
-    if (handleLaunchText(userId, ctx.message.text, SESSION[userId], ctx))
-      return;
     if (!userId) return;
 
-    // Handle cancel first
     if (ctx.message.text === "/cancel") {
       SESSION[userId] = {};
       return ctx.reply("❌ Operation cancelled.", mainKeyboard());
     }
 
-    // Ignore all other commands — let command handlers deal with them
     if (ctx.message.text.startsWith("/")) return;
+    
+    const { handleLaunchText } = await import("./launch");
+    if (handleLaunchText(userId, ctx.message.text, SESSION[userId], ctx))
+      return;
+
+    // Handle cancel first
+
+    // Ignore all other commands — let command handlers deal with them
 
     const userSession = SESSION[userId];
     if (!userSession?.waitingForAmount && !userSession?.waitingForAddress)
@@ -424,6 +428,8 @@ export function registerWalletCommands() {
           transaction,
           [userKeypair],
         );
+        await saveTransaction(userId, 'send', sendAmount, signature, 'success', 'SOL');
+
         const newBalance = await getBalance(userKeypair.publicKey);
         SESSION[userId] = {};
 

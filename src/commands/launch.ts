@@ -1,5 +1,5 @@
 import { bot, SESSION, connection } from "../bot";
-import { getUserKeypair, prisma } from "../services/solana";
+import { getUserKeypair, prisma, saveTransaction } from "../services/solana";
 import { mainKeyboard } from "../keyboards";
 import { Markup } from "telegraf";
 import {
@@ -18,8 +18,6 @@ import {
     TOKEN_PROGRAM_ID,
     getMinimumBalanceForRentExemptMint,
 } from "@solana/spl-token";
-
-
 
 export function registerLaunchCommands() {
 
@@ -97,23 +95,14 @@ export function registerLaunchCommands() {
             const keypair = await getUserKeypair(userId);
             if (!keypair) return ctx.reply("❌ No wallet found.");
 
-            // 1. Generate mint keypair
             const mintKeypair = Keypair.generate();
-
-            // 2. Get rent
             const rentLamports = await getMinimumBalanceForRentExemptMint(connection);
-
-            // 3. Get associated token account
             const associatedTokenAccount = await getAssociatedTokenAddress(
                 mintKeypair.publicKey,
                 keypair.publicKey
             );
 
-            
-
-            // 5. Build transaction
             const transaction = new Transaction().add(
-                // Create mint account
                 SystemProgram.createAccount({
                     fromPubkey: keypair.publicKey,
                     newAccountPubkey: mintKeypair.publicKey,
@@ -121,36 +110,38 @@ export function registerLaunchCommands() {
                     lamports: rentLamports,
                     programId: TOKEN_PROGRAM_ID,
                 }),
-                // Initialize mint
                 createInitializeMintInstruction(
                     mintKeypair.publicKey,
-                    9, // decimals
+                    9,
                     keypair.publicKey,
                     keypair.publicKey,
                     TOKEN_PROGRAM_ID
                 ),
-                // Create associated token account
                 createAssociatedTokenAccountInstruction(
                     keypair.publicKey,
                     associatedTokenAccount,
                     keypair.publicKey,
                     mintKeypair.publicKey
                 ),
-                // Mint tokens to wallet
                 createMintToInstruction(
                     mintKeypair.publicKey,
                     associatedTokenAccount,
                     keypair.publicKey,
                     session.tokenSupply! * Math.pow(10, 9)
                 ),
-                // Add metadata
-                
             );
 
             const signature = await sendAndConfirmTransaction(
                 connection,
                 transaction,
                 [keypair, mintKeypair]
+            );
+
+            // Save to transaction history
+            await saveTransaction(
+                userId, 'launch', 0,
+                signature, 'success',
+                session.tokenName!, session.tokenSymbol!
             );
 
             SESSION[userId] = {};
@@ -161,7 +152,7 @@ export function registerLaunchCommands() {
                 `🎉 *Token Launched Successfully!*\n\n` +
                 `📛 *Name:* ${session.tokenName}\n` +
                 `🔤 *Symbol:* ${session.tokenSymbol}\n` +
-                `💰 *Supply:* ${session.tokenSupply!.toLocaleString()}\n` +
+                `💰 *Supply:* ${session.tokenSupply!.toLocaleString('en-US')}\n` +
                 `📝 *Description:* ${session.tokenDescription || "N/A"}\n\n` +
                 `🔑 *Token CA:*\n\`${mintAddress}\`\n\n` +
                 `🔗 [View on Solscan](https://solscan.io/token/${mintAddress}?cluster=devnet)\n` +
@@ -190,7 +181,6 @@ export function registerLaunchCommands() {
     });
 }
 
-// Text handler for launch wizard — call this from wallet.ts text handler
 export function handleLaunchText(userId: number, text: string, session: any, ctx: any): boolean {
     if (!session?.launchStep) return false;
 
@@ -250,7 +240,7 @@ export function handleLaunchText(userId: number, text: string, session: any, ctx
             `✅ *Review Your Token*\n\n` +
             `📛 Name: *${session.tokenName}*\n` +
             `🔤 Symbol: *${session.tokenSymbol}*\n` +
-            `💰 Supply: *${session.tokenSupply?.toLocaleString()}*\n` +
+            `💰 Supply: *${session.tokenSupply?.toLocaleString('en-US')}*\n` +
             `📝 Description: *${text}*\n\n` +
             `*Ready to launch?*\n` +
             `_Cost: ~0.01 SOL in fees_`,
