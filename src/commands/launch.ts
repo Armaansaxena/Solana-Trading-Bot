@@ -155,11 +155,11 @@ export function registerLaunchCommands() {
                 `💰 *Supply:* ${session.tokenSupply!.toLocaleString('en-US')}\n` +
                 `📝 *Description:* ${session.tokenDescription || "N/A"}\n\n` +
                 `🔑 *Token CA:*\n\`${mintAddress}\`\n\n` +
-                `🔗 [View on Solscan](https://solscan.io/token/${mintAddress}?cluster=devnet)\n` +
-                `🔗 [View Transaction](https://solscan.io/tx/${signature}?cluster=devnet)\n\n` +
+                `🔗 [View on Solscan](https://solscan.io/token/${mintAddress})\n` +
+                `🔗 [View Transaction](https://solscan.io/tx/${signature})\n\n` +
                 `✅ _Token deployed on Solana Devnet_`,
                 Markup.inlineKeyboard([
-                    [Markup.button.url("🌐 View Token", `https://solscan.io/token/${mintAddress}?cluster=devnet`)],
+                    [Markup.button.url("🌐 View Token", `https://solscan.io/token/${mintAddress}`)],
                     [Markup.button.callback("📊 Portfolio", "portfolio"), Markup.button.callback("🏠 Menu", "main_menu")]
                 ])
             );
