@@ -57,7 +57,7 @@ export function registerWalletCommands() {
           `📍 *Public Key:*\n\`${keypair.publicKey.toBase58()}\`\n\n` +
           `💰 *Balance:* ${balance.toFixed(4)} SOL\n\n` +
           `🔐 _Private key encrypted with AES-256_\n\n` +
-          `🚰 *Need Funds?* [Solana Faucet](https://faucet.solana.com)`,
+          `💡 Add SOL to your wallet to get started`,
         postWalletKeyboard(),
       );
     } catch (error) {
@@ -106,7 +106,7 @@ export function registerWalletCommands() {
         `💰 *Wallet Balance*\n\n` +
           `${balance.toFixed(4)} SOL\n\n` +
           `📍 Address:\n\`${user.publicKey}\`\n\n` +
-          `🚰 Need SOL? Visit [Solana Faucet](https://faucet.solana.com)`,
+          `💡 Add SOL to your wallet to continue`,
         postWalletKeyboard(),
       );
     } catch (error) {
@@ -188,7 +188,7 @@ export function registerWalletCommands() {
         await ctx.answerCbQuery();
         return ctx.replyWithMarkdown(
           `❌ *Insufficient Balance*\n\nCurrent: ${balance.toFixed(4)} SOL\n\n` +
-            `[Get free devnet SOL](https://faucet.solana.com)`,
+            `💡 Add SOL to your wallet to continue`,
         );
       }
       SESSION[userId] = { waitingForAmount: true };
@@ -438,12 +438,12 @@ export function registerWalletCommands() {
             `💰 Sent: ${sendAmount.toFixed(4)} SOL\n` +
             `📊 New Balance: ${newBalance.toFixed(4)} SOL\n` +
             `📍 To: \`${address}\`\n\n` +
-            `🔗 [View on Solscan](https://solscan.io/tx/${signature}?cluster=devnet)`,
+            `🔗 [View on Solscan](https://solscan.io/tx/${signature})`,
           Markup.inlineKeyboard([
             [
               Markup.button.url(
                 "🌐 Explorer",
-                `https://explorer.solana.com/tx/${signature}?cluster=devnet`,
+                `https://explorer.solana.com/tx/${signature}`,
               ),
             ],
             [

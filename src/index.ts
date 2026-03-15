@@ -38,7 +38,7 @@ bot.start(async (ctx: Context) => {
         "🔹 *Portfolio* — Track all your assets\n" +
         "🔹 *Launch* — Deploy tokens on DeAura\n" +
         "🔹 *AI* — Natural language commands\n\n" +
-        "⚠️ *Network:* Solana Devnet\n\n" +
+        "🌐 *Network:* Solana Mainnet\n\n" +
         "💡 _Tip: Use /help for all commands_",
         Markup.inlineKeyboard([
             [Markup.button.callback('✨ Generate Wallet', 'generate_wallet')],
@@ -75,7 +75,7 @@ bot.command('about', async (ctx: Context) => {
     return ctx.replyWithMarkdown(
         "ℹ️ *About SolBot V2*\n\n" +
         "🤖 *Version:* 2.0.0\n" +
-        "⚡ *Network:* Solana Devnet\n" +
+        "⚡ *Network:* Solana Mainnet\n" +
         "🔐 *Security:* AES-256 encryption\n" +
         "🗄️ *Database:* PostgreSQL\n\n" +
         "🌟 *Features:*\n" +

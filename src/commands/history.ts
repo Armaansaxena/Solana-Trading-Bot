@@ -68,7 +68,7 @@ async function showHistory(ctx: any, userId: number, page: number = 0) {
 
             message += `${statusEmoji} ${typeEmoji} *${formatTxType(tx.type)}*\n`;
             message += `   ${formatTxDetails(tx)}\n`;
-            message += `   🔗 [Solscan](https://solscan.io/tx/${tx.signature}?cluster=devnet)\n`;
+            message += `   🔗 [Solscan](https://solscan.io/tx/${tx.signature})\n`;
             message += `   _${date}_\n\n`;
         }
 
