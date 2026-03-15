@@ -11,8 +11,15 @@ import type { Context } from "telegraf";
 import { registerPortfolioCommands } from "./commands/portfolio";
 import { registerLaunchCommands } from "./commands/launch";
 import { registerAICommands } from "./commands/ai";
+import { registerHistoryCommands } from "./commands/history";
+import { PrismaPg } from "@prisma/adapter-pg";
+import { registerAlertCommands, startAlertChecker } from "./commands/alerts";
+import { registerWatchlistCommands } from "./commands/watchlist";
+import { registerReferralCommands } from "./commands/referral";
 
-const prisma = new PrismaClient();
+const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL! });
+
+const prisma = new PrismaClient({adapter});
 
 // Global debug middleware
 bot.use((ctx, next) => {
@@ -82,10 +89,14 @@ bot.command('about', async (ctx: Context) => {
 });
 
 // Feature modules — registered AFTER core commands
+registerReferralCommands();
 registerSwapCommands();
+registerAlertCommands();
 registerAICommands();      
 registerLaunchCommands();    
 registerPortfolioCommands(); 
+registerHistoryCommands();
+registerWatchlistCommands();
 registerWalletCommands();
 
 bot.catch((err, ctx: Context) => {
@@ -121,12 +132,19 @@ async function startBot() {
             { command: 'launch', description: '🚀 Launch a new token' },
             { command: 'ai', description: '🤖 AI assistant (e.g. /ai swap 1 SOL to USDC)' },
             { command: 'cancel', description: '❌ Cancel current operation' },
+            { command: 'history', description: '📜 View transaction history' },
+            { command: 'alert', description: '🔔 Set price alert (e.g. /alert SOL above 200)' },
+            { command: 'alerts', description: '📋 View all price alerts' },
+            { command: 'watch', description: '👁️ Add token to watchlist (e.g. /watch SOL)' },
+            { command: 'watchlist', description: '👁️ View your token watchlist' },
+            { command: 'referral', description: '👥 View referral stats & your link' },
         ]);
         console.log("✅ Commands registered");
 
         console.log("🚀 Launching bot...");
         bot.launch();
         console.log("✅ SolBot V2 is live!");
+        startAlertChecker(bot);
     } catch (error) {
         console.error("❌ Startup failed:", error);
         process.exit(1);

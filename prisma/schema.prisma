@@ -16,3 +16,42 @@ model User {
   iv           String
   createdAt    DateTime @default(now())
 }
+
+model transaction {
+  id          Int       @id @default(autoincrement())
+  telegramId  BigInt
+  type        String
+  fromToken   String?
+  toToken     String?
+  amount      Float
+  signature   String
+  status      String
+  createdAt   DateTime  @default(now())
+}
+
+model Alert {
+  id         Int      @id @default(autoincrement())
+  telegramId BigInt
+  token      String
+  targetPrice Float
+  condition  String   // "above" or "below"
+  triggered  Boolean  @default(false)
+  createdAt  DateTime @default(now())
+}
+
+model Watchlist {
+  id         Int      @id @default(autoincrement())
+  telegramId BigInt
+  token      String
+  mintAddress String?
+  createdAt  DateTime @default(now())
+
+  @@unique([telegramId, token])
+}
+
+model Referral {
+  id           Int      @id @default(autoincrement())
+  referrerId   BigInt
+  referredId   BigInt   @unique
+  createdAt    DateTime @default(now())
+}

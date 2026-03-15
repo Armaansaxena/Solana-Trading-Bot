@@ -1,10 +1,15 @@
+import * as dotenv from "dotenv";
+dotenv.config({ override: true });
+
 import { Keypair, PublicKey } from "@solana/web3.js";
 import { connection } from "../bot";
 import { decrypt } from "../utils/crypto";
 import { PrismaClient } from "@prisma/client";
+import { PrismaPg } from "@prisma/adapter-pg";
 import bs58 from "bs58";
 
-const prisma = new PrismaClient();
+const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL });
+const prisma = new PrismaClient({ adapter });
 export { prisma };
 
 export async function getBalance(publicKey: PublicKey): Promise<number> {
@@ -28,4 +33,30 @@ export async function getUserPublicKey(telegramId: number): Promise<string | nul
         where: { telegramId: BigInt(telegramId) }
     });
     return user?.publicKey || null;
+}
+
+export async function saveTransaction(
+    telegramId: number,
+    type: string,
+    amount: number,
+    signature: string,
+    status: string,
+    fromToken?: string,
+    toToken?: string
+) {
+    try {
+        await prisma.transaction.create({
+            data: {
+                telegramId: BigInt(telegramId),
+                type,
+                amount,
+                signature,
+                status,
+                fromToken,
+                toToken,
+            }
+        });
+    } catch (error) {
+        console.error("Save transaction error:", error);
+    }
 }
