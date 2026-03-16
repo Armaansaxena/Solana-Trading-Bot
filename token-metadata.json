@@ -1,0 +1,15 @@
+{
+    "name": "ArmEthSol Token",
+    "symbol": "AETS",
+    "description": "The official utility token of SolBot V2 — an AI-powered Solana trading bot",
+    "image": "https://raw.githubusercontent.com/Armaansaxena/Solana-Trading-Bot/main/token-logo.png",
+    "attributes": [],
+    "properties": {
+        "files": [
+            {
+                "uri": "https://raw.githubusercontent.com/Armaansaxena/Solana-Trading-Bot/main/token-logo.png",
+                "type": "image/png"
+            }
+        ]
+    }
+}
