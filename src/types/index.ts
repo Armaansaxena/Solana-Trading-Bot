@@ -7,9 +7,10 @@ export interface SessionData {
     swapFromToken?: string;
     swapToToken?: string;
     // Launch wizard
-    launchStep?: "name" | "symbol" | "supply" | "description" | "confirm";
+    launchStep?: "name" | "symbol" | "supply" | "description" | "image" | "confirm";
     tokenName?: string;
     tokenSymbol?: string;
     tokenSupply?: number;
     tokenDescription?: string;
+    tokenImageUrl?: string;
 }
