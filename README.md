@@ -1,222 +1,203 @@
-# 🚀 SolBot V2 — Solana Trading Bot
+# 🚀 SolBot V2 — Automated Solana Trading Engine
 
-A feature-rich, AI-powered Telegram bot for managing Solana wallets, trading tokens, tracking portfolios, and launching SPL tokens. Built with **TypeScript**, **Prisma**, **PostgreSQL**, and powered by **Groq AI**.
+<div align="center">
+
+![Status](https://img.shields.io/badge/Status-Production%20Ready-success)
+![Solana](https://img.shields.io/badge/Solana-Web3-purple)
+![TypeScript](https://img.shields.io/badge/TypeScript-5-blue)
+![Docker](https://img.shields.io/badge/Docker-Containerized-blue)
+
+### ⚡ Secure, AI-Powered DeFi Trading Bot with Real-Time Execution
+
+A production-grade trading bot built on Solana that enables **automated trading, portfolio management, and token launches**, with **secure key handling and real-time monitoring via Telegram**.
 
 ---
 
-## ✨ Features
+## 🎥 Demo Video
 
-### 💼 Wallet Management
-* 🔐 **Secure Wallet Generation** – Private keys encrypted with **AES-256-CBC** before storage.
-* 💰 **Real-time Balance** – Check SOL holdings instantly.
-* 💸 **Fast Transfers** – Send SOL with Send Max support.
-* 🔑 **Export Keys** – Securely export your private key anytime.
-* ⚙️ **Settings** – Soft delete (remove from bot) or full reset.
+👉 Watch the bot in action: https://youtu.be/lnwwbN_f3Yg?si=o-x079ibP0ZT5v9B
 
-### 🔄 Trading
-* 🔄 **Token Swaps** – Swap SOL, USDC, USDT, BONK, JUP, WIF via **Raydium**.
-* 💰 **Live Prices** – Real-time token prices powered by Raydium.
-* 📊 **Portfolio Tracker** – View all token balances with USD values.
+## 🔗 Live Demo
 
-### 🚀 Token Launch
-* 🪙 **SPL Token Launcher** – Deploy your own token on Solana in under 30 seconds.
-* 🧙 **Launch Wizard** – Step-by-step guided token creation.
+👉 Try the bot here: https://t.me/ArmEthSol_bot
 
-### 🤖 AI Assistant
-* 🧠 **Natural Language Commands** – Powered by **Groq (LLaMA 3.3 70B)**.
-* 💬 **Examples:** "swap 2 SOL to USDC", "what's my balance", "buy $20 of BONK"
+</div>
 
-### 📈 Tracking & Alerts
-* 🔔 **Price Alerts** – Get notified when tokens hit your target price.
-* 👁️ **Watchlist** – Track your favorite tokens in one place.
-* 📜 **Transaction History** – Full history with pagination.
-* 👥 **Referral System** – Share your link and track referrals.
+---
+
+## 🎯 Problem Statement
+
+
+## ⚡ Key Highlights
+
+* 🤖 **Automated Token Swaps** via Raydium/Jupiter
+* 🔐 **AES-256 Encrypted Key Management** (no plaintext exposure)
+* 📡 **Real-Time Trading via Telegram Bot Interface**
+* 🧠 **AI-Powered Commands (Groq LLaMA 3.3 70B)**
+* 💼 **Portfolio Tracking & Analytics**
+* 🚀 **One-Click SPL Token Launch**
+* 🐳 **Dockerized Deployment (AWS Ready)**
+
+---
+
+## 🧠 System Architecture
+
+```id="arch001"
+User (Telegram)
+        ↓
+Bot Interface (Telegraf.js)
+        ↓
+Backend Engine (Node.js + TypeScript)
+        ↓
+Trading Logic Layer
+        ↓
+DEX APIs (Raydium / Jupiter)
+        ↓
+Solana Blockchain
+        ↓
+Database (PostgreSQL via Prisma)
+```
 
 ---
 
 ## 🛠️ Tech Stack
 
-| Layer | Technology |
-|---|---|
-| Runtime | Node.js v22 + tsx |
-| Bot Framework | Telegraf.js |
-| Blockchain | Solana Web3.js + SPL Token |
-| DEX Integration | Raydium API |
-| AI Layer | Groq (LLaMA 3.3 70B) |
-| ORM | Prisma 7 |
-| Database | PostgreSQL |
-| Encryption | AES-256-CBC |
-| Containerization | Docker & Docker Compose |
-
----
-
-## 📋 Prerequisites
-
-* Node.js v18+
-* PostgreSQL v15+
-* Docker & Docker Compose (for containerized setup)
-* Telegram Bot Token (from [@BotFather](https://t.me/BotFather))
-* Groq API Key (from [console.groq.com](https://console.groq.com))
-
----
-
-## 🚀 Quick Start
-
-### 1. Clone the Repository
-```bash
-git clone https://github.com/Armaansaxena/Solana-Trading-Bot.git
-cd Solana-Trading-Bot
-```
-
-### 2. Install Dependencies
-```bash
-npm install
-```
-
-### 3. Configure Environment
-```bash
-cp .env.example .env
-```
-
-Edit `.env` with your values:
-```env
-BOT_TOKEN=your_telegram_bot_token
-ENCRYPTION_KEY=your_32_character_key
-DATABASE_URL="postgresql://solana_bot_user:local_password@localhost:5432/solana_bot?schema=public"
-GROQ_API_KEY=your_groq_api_key
-RPC_URL=https://api.mainnet-beta.solana.com
-```
-
-### 4. Start Database
-```bash
-docker-compose up db -d
-```
-
-### 5. Sync Database Schema
-```bash
-npx prisma db push
-npx prisma generate
-```
-
-### 6. Run the Bot
-```bash
-npm run dev
-```
-
----
-
-## 📁 Project Structure
-```
-SolBot-V2/
-├── src/
-│   ├── index.ts              # Entry point
-│   ├── bot.ts                # Bot + connection instance
-│   ├── commands/
-│   │   ├── wallet.ts         # Wallet management
-│   │   ├── swap.ts           # Token swaps
-│   │   ├── portfolio.ts      # Portfolio tracker
-│   │   ├── launch.ts         # SPL token launcher
-│   │   ├── ai.ts             # AI assistant
-│   │   ├── history.ts        # Transaction history
-│   │   ├── alerts.ts         # Price alerts
-│   │   ├── watchlist.ts      # Token watchlist
-│   │   └── referral.ts       # Referral system
-│   ├── services/
-│   │   ├── solana.ts         # Solana helpers
-│   │   └── jupiter.ts        # Raydium swap service
-│   ├── keyboards/
-│   │   └── index.ts          # All Telegram keyboards
-│   ├── types/
-│   │   └── index.ts          # Shared TypeScript types
-│   └── utils/
-│       └── crypto.ts         # AES-256 encryption
-├── prisma/
-│   └── schema.prisma         # Database schema
-├── prisma.config.ts          # Prisma configuration
-├── docker-compose.yml        # Local DB orchestration
-├── Dockerfile                # Production container
-├── .env.example              # Environment template
-└── tsconfig.json             # TypeScript config
-```
+**Backend:** Node.js, TypeScript, Telegraf.js\
+**Blockchain:** Solana Web3.js, SPL Token\
+**DEX Integration:** Raydium API / Jupiter Aggregator\
+**AI Layer:** Groq (LLaMA 3.3 70B)\
+**Database:** PostgreSQL + Prisma ORM\
+**Security:** AES-256-CBC Encryption\
+**DevOps:** Docker, Docker Compose, AWS EC2
 
 ---
 
 ## 🔐 Security Architecture
 
-* **Zero-Plaintext Storage** — Private keys never stored as plain text.
-* **Unique IVs** — Every key encrypted with a unique Initialization Vector.
-* **Environment Isolation** — All secrets managed via non-committed `.env`.
-* **Auto-delete** — Private key messages auto-delete after 2 minutes.
+* 🔒 Private keys encrypted using **AES-256-CBC**
+* 🚫 No plaintext storage of sensitive data
+* 🔁 Unique IV per encryption instance
+* 🧾 Secure transaction signing flow
+* ⏳ Auto-deletion of sensitive messages
 
 ---
 
-## 🤖 Bot Commands
+## 📊 Core Functionalities
 
-| Command | Description |
-|---|---|
-| `/start` | Main menu |
-| `/help` | Show all commands |
-| `/swap SOL USDC 1` | Swap tokens |
-| `/price SOL` | Get token price |
-| `/portfolio` | View portfolio |
-| `/launch` | Launch a new token |
-| `/ai swap 2 SOL to USDC` | AI natural language |
-| `/history` | Transaction history |
-| `/alert SOL above 200` | Set price alert |
-| `/alerts` | View all alerts |
-| `/watch SOL` | Add to watchlist |
-| `/watchlist` | View watchlist |
-| `/referral` | Referral stats & link |
-| `/cancel` | Cancel current operation |
+### 💼 Wallet Management
+
+* Secure wallet generation
+* Real-time SOL balance tracking
+* Fast transfers with max-send support
+
+---
+
+### 🔄 Trading Engine
+
+* Token swaps (SOL, USDC, BONK, JUP, WIF)
+* Real-time price fetching
+* Automated execution logic
+
+---
+
+### 📈 Portfolio & Tracking
+
+* Multi-token portfolio tracking
+* Transaction history with pagination
+* Price alerts & watchlist
+
+---
+
+### 🚀 Token Launch System
+
+* Deploy SPL tokens in seconds
+* Guided launch wizard
+
+---
+
+### 🤖 AI Assistant
+
+* Natural language commands
+* Example:
+
+  * “Swap 2 SOL to USDC”
+  * “Check my portfolio”
 
 ---
 
 ## 🚀 Deployment
 
 ### Docker (Recommended)
-```bash
+
+```bash id="deploy2"
 docker-compose up -d
 ```
 
-### AWS EC2
-```bash
-# SSH into EC2
-ssh -i your-key.pem ec2-user@your-ec2-ip
+### Local Setup
 
-# Clone and setup
-git clone https://github.com/Armaansaxena/Solana-Trading-Bot.git
-cd Solana-Trading-Bot
-cp .env.example .env
-# Fill in .env values
-docker-compose up -d
+```bash id="deploy3"
+npm install
+npx prisma db push
+npm run dev
 ```
 
 ---
 
-## 🐛 Troubleshooting
+## 📁 Project Structure
 
-| Error | Fix |
-|---|---|
-| `P1000 Auth Error` | Check `DATABASE_URL` credentials match `docker-compose.yml` |
-| `Port 5432 In Use` | Stop local PostgreSQL service |
-| `BOT_TOKEN undefined` | Ensure `.env` file exists with correct values |
-| `409 Conflict` | Another bot instance is running — stop it first |
-| `Prisma Client Error` | Run `npx prisma generate` after schema changes |
+```
+src/
+ ├── commands/        # Bot commands (wallet, swap, AI,alerts)
+ ├── services/        # Blockchain + API integrations
+ ├── utils/           # Encryption & helpers
+ ├── prisma/          # Database schema
+ └── bot.ts           # Main bot logic
+```
 
 ---
 
-## 📝 License
+## 📈 Why This Project Stands Out
 
-MIT License — feel free to use, modify, and distribute.
+This is NOT a basic bot.
+
+It demonstrates:
+
+* ⚡ Backend system architecture
+* 🔐 Security-first engineering
+* 🤖 AI integration in real-world workflows
+* ☁️ Cloud-ready deployment
+* 🧠 Deep understanding of DeFi systems
+
+---
+
+## 🔮 Future Improvements
+
+* 📊 Strategy-based trading (AI/ML)
+* 📈 Risk management engine
+* 🌐 Multi-chain support (Ethereum, Base)
+* 📉 Advanced analytics dashboard
+
+---
+
+## 👨‍💻 Author
+
+**Armaan Saxena**
+GitHub: https://github.com/Armaansaxena
+
+---
+
+## ⭐ Final Note
+
+This project reflects:
+
+* Real-world backend engineering
+* Secure infrastructure design
+* Production-ready Web3 system building
 
 ---
 
 <div align="center">
 
-**Built for the Solana ecosystem 🌊**
-
-**[⭐ Star this repo](https://github.com/Armaansaxena/Solana-Trading-Bot) if you find it useful!**
-
-**Made with ❤️ by Armaan Saxena**
+⭐ Star this repo if you find it valuable!
 
 </div>
