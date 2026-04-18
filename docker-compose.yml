@@ -32,7 +32,7 @@ services:
     environment:
       - BOT_TOKEN=${BOT_TOKEN}
       # FIX: In Docker, the host is 'db' (the service name), NOT localhost or dpg-...
-      - DATABASE_URL=postgresql://solana_bot_user:local_password@db:5432/solana_bot?schema=public
+      - DATABASE_URL=postgresql://postgres:Armaansaxena@704@db.oqapbelkjwtyymcwkkaj.supabase.co:5432/postgres
       - ENCRYPTION_KEY=${ENCRYPTION_KEY}
     networks:
       - solana-network
