@@ -8,6 +8,7 @@ import {
 } from "../services/jupiter";
 import { mainKeyboard } from "../keyboards";
 import { Markup } from "telegraf";
+import { getSession, setSession, clearSession } from "../services/redis";
 import type { Context } from "telegraf";
 
 export function registerSwapCommands() {
@@ -77,12 +78,12 @@ export function registerSwapCommands() {
             const outAmount = formatTokenAmount(quote.outAmount, toToken!);
             const priceImpact = parseFloat(quote.priceImpactPct).toFixed(3);
 
-            SESSION[userId] = {
+            await setSession(userId, {
                 waitingForSwapAmount: true,
                 swapFromToken: fromToken,
                 swapToToken: toToken,
                 sendAmount: amount,
-            };
+            });
 
             return ctx.replyWithMarkdown(
                 `🔄 *Swap Preview*\n\n` +
@@ -106,7 +107,7 @@ export function registerSwapCommands() {
 
     bot.action("confirm_swap", async (ctx) => {
         const userId = ctx.from!.id;
-        const session = SESSION[userId];
+        const session = await getSession(userId);
 
         if (!session?.swapFromToken || !session?.swapToToken || !session?.sendAmount) {
             await ctx.answerCbQuery("❌ Session expired");
@@ -131,7 +132,7 @@ export function registerSwapCommands() {
                 session.sendAmount
             );
 
-            SESSION[userId] = {};
+            await clearSession(userId);
 
             if (!signature) {
                 return ctx.replyWithMarkdown(
@@ -160,7 +161,7 @@ export function registerSwapCommands() {
                 ])
             );
         } catch (error) {
-            SESSION[userId] = {};
+            await clearSession(userId);
             console.error("Confirm swap error:", error);
             return ctx.reply("❌ Swap failed. Please try again.", mainKeyboard());
         }
@@ -168,7 +169,7 @@ export function registerSwapCommands() {
 
     bot.action("cancel_swap", async (ctx: Context) => {
         const userId = ctx.from!.id;
-        SESSION[userId] = {};
+        await clearSession(userId);
         await ctx.answerCbQuery("Cancelled");
         return ctx.replyWithMarkdown("❌ *Swap cancelled.*", mainKeyboard());
     });
