@@ -13,6 +13,7 @@ import {
 import { Markup } from "telegraf";
 import bs58 from "bs58";
 import { saveTransaction } from "../services/solana";
+import { getSession, setSession, clearSession } from "../services/redis";
 
 export function registerWalletCommands() {
   bot.action("main_menu", async (ctx) => {
@@ -175,42 +176,37 @@ export function registerWalletCommands() {
     }
   });
 
-  bot.action("send_sol", async (ctx) => {
+  bot.action('send_sol', async (ctx) => {
     const userId = ctx.from!.id;
     try {
-      const keypair = await getUserKeypair(userId);
-      if (!keypair) {
-        await ctx.answerCbQuery("❌ No wallet found");
-        return ctx.reply("❌ Generate a wallet first.", mainKeyboard());
-      }
-      const balance = await getBalance(keypair.publicKey);
-      if (balance < 0.001) {
+        const keypair = await getUserKeypair(userId);
+        if (!keypair) {
+            await ctx.answerCbQuery("❌ No wallet found");
+            return ctx.reply("❌ Generate a wallet first.", mainKeyboard());
+        }
+        const balance = await getBalance(keypair.publicKey);
+        if (balance < 0.001) {
+            await ctx.answerCbQuery();
+            return ctx.replyWithMarkdown(
+                `❌ *Insufficient Balance*\n\nCurrent: ${balance.toFixed(4)} SOL\n\n` +
+                `💡 Add SOL to your wallet to continue`
+            );
+        }
+        await setSession(userId, { waitingForAmount: true });
         await ctx.answerCbQuery();
         return ctx.replyWithMarkdown(
-          `❌ *Insufficient Balance*\n\nCurrent: ${balance.toFixed(4)} SOL\n\n` +
-            `💡 Add SOL to your wallet to continue`,
+            `💸 *Send SOL*\n\n💰 Available: ${balance.toFixed(4)} SOL\n\n` +
+            `How much SOL do you want to send?\n\n` +
+            `• Type an amount e.g. \`0.5\`\n` +
+            `• Or tap *Send Max* below\n\n` +
+            `_Type /cancel to abort_`,
+            Markup.inlineKeyboard([
+                [Markup.button.callback(`📤 Send Max (${(balance - 0.001).toFixed(4)} SOL)`, "send_max")],
+                [Markup.button.callback("❌ Cancel", "main_menu")]
+            ])
         );
-      }
-      SESSION[userId] = { waitingForAmount: true };
-      await ctx.answerCbQuery();
-      return ctx.replyWithMarkdown(
-        `💸 *Send SOL*\n\n💰 Available: ${balance.toFixed(4)} SOL\n\n` +
-          `How much SOL do you want to send?\n\n` +
-          `• Type an amount e.g. \`0.5\`\n` +
-          `• Or tap *Send Max* below\n\n` +
-          `_Type /cancel to abort_`,
-        Markup.inlineKeyboard([
-          [
-            Markup.button.callback(
-              `📤 Send Max (${(balance - 0.001).toFixed(4)} SOL)`,
-              "send_max",
-            ),
-          ],
-          [Markup.button.callback("❌ Cancel", "main_menu")],
-        ]),
-      );
     } catch (error) {
-      return ctx.reply("❌ Error initiating transfer.");
+        return ctx.reply("❌ Error initiating transfer.");
     }
   });
 
@@ -287,7 +283,7 @@ export function registerWalletCommands() {
       await prisma.user.delete({
         where: { telegramId: BigInt(userId) },
       });
-      SESSION[userId] = {};
+      await clearSession(userId);
       return ctx.replyWithMarkdown(
         `✅ *Wallet Removed from Bot*\n\n` +
           `Your wallet has been removed from this bot.\n` +
@@ -309,7 +305,7 @@ export function registerWalletCommands() {
       await prisma.user.delete({
         where: { telegramId: BigInt(userId) },
       });
-      SESSION[userId] = {};
+      await clearSession(userId);
       return ctx.replyWithMarkdown(
         `💣 *Full Reset Complete*\n\n` +
           `Everything has been deleted.\n\n` +
@@ -324,143 +320,125 @@ export function registerWalletCommands() {
     }
   });
 
-  bot.action("send_max", async (ctx) => {
+  bot.action('send_max', async (ctx) => {
     const userId = ctx.from!.id;
     try {
-      const keypair = await getUserKeypair(userId);
-      if (!keypair) return ctx.reply("❌ No wallet found.");
-      const balance = await getBalance(keypair.publicKey);
-      const maxAmount = Math.max(0, balance - 0.001);
-      if (maxAmount <= 0) {
-        await ctx.answerCbQuery("❌ Insufficient balance");
-        return ctx.reply("❌ Insufficient balance to cover fees.");
-      }
-      SESSION[userId] = { waitingForAddress: true, sendAmount: maxAmount };
-      await ctx.answerCbQuery();
-      return ctx.replyWithMarkdown(
-        `✅ *Max Amount Selected*\n\n` +
-          `Sending: ${maxAmount.toFixed(4)} SOL\n\n` +
-          `📨 Now enter the *recipient address*:\n\n` +
-          `_Type /cancel to abort_`,
-      );
+        const keypair = await getUserKeypair(userId);
+        if (!keypair) return ctx.reply("❌ No wallet found.");
+        const balance = await getBalance(keypair.publicKey);
+        const maxAmount = Math.max(0, balance - 0.001);
+        if (maxAmount <= 0) {
+            await ctx.answerCbQuery("❌ Insufficient balance");
+            return ctx.reply("❌ Insufficient balance to cover fees.");
+        }
+        await setSession(userId, { waitingForAddress: true, sendAmount: maxAmount });
+        await ctx.answerCbQuery();
+        return ctx.replyWithMarkdown(
+            `✅ *Max Amount Selected*\n\n` +
+            `Sending: ${maxAmount.toFixed(4)} SOL\n\n` +
+            `📨 Now enter the *recipient address*:\n\n` +
+            `_Type /cancel to abort_`
+        );
     } catch (error) {
-      return ctx.reply("❌ Error.");
+        return ctx.reply("❌ Error.");
     }
-  });
+  }); 
 
   bot.action("delete_msg", (ctx) => ctx.deleteMessage());
 
-  bot.on("text", async (ctx) => {
-    const userId = ctx.from?.id;
-    if (!userId) return;
+  bot.on('text', async (ctx) => {
+      const userId = ctx.from?.id;
+      if (!userId) return;
 
-    if (ctx.message.text === "/cancel") {
-      SESSION[userId] = {};
-      return ctx.reply("❌ Operation cancelled.", mainKeyboard());
-    }
-
-    if (ctx.message.text.startsWith("/")) return;
-    
-    const { handleLaunchText } = await import("./launch");
-    if (handleLaunchText(userId, ctx.message.text, SESSION[userId], ctx))
-      return;
-
-    // Handle cancel first
-
-    // Ignore all other commands — let command handlers deal with them
-
-    const userSession = SESSION[userId];
-    if (!userSession?.waitingForAmount && !userSession?.waitingForAddress)
-      return;
-
-    try {
-      const userKeypair = await getUserKeypair(userId);
-      if (!userKeypair)
-        return ctx.reply("❌ No wallet found. Use /start to create one.");
-
-      if (userSession?.waitingForAmount) {
-        const input = ctx.message.text.trim().toLowerCase();
-        const balance = await getBalance(userKeypair.publicKey);
-        let amount: number;
-
-        if (input === "all" || input === "max") {
-          amount = Math.max(0, balance - 0.001);
-          if (amount <= 0)
-            return ctx.reply("❌ Insufficient balance for fees.");
-        } else {
-          amount = parseFloat(input);
-          if (isNaN(amount) || amount <= 0)
-            return ctx.reply("❌ Invalid amount.");
-          if (amount > balance)
-            return ctx.replyWithMarkdown(
-              `❌ *Insufficient Balance*\n\nRequested: ${amount} SOL\nAvailable: ${balance.toFixed(4)} SOL`,
-            );
-        }
-
-        SESSION[userId] = { waitingForAddress: true, sendAmount: amount };
-        return ctx.replyWithMarkdown(
-          `✅ Amount: ${amount.toFixed(4)} SOL\n\n📨 Now enter the *recipient address*:\n\n_Type /cancel to abort_`,
-        );
+      if (ctx.message.text === '/cancel') {
+          await clearSession(userId);
+          return ctx.reply("❌ Operation cancelled.", mainKeyboard());
       }
 
-      if (userSession?.waitingForAddress) {
-        const address = ctx.message.text.trim();
-        const sendAmount = userSession.sendAmount || 0;
-        const toPublicKey = new PublicKey(address);
+      if (ctx.message.text.startsWith('/')) return;
 
-        if (toPublicKey.equals(userKeypair.publicKey))
-          return ctx.reply("❌ Cannot send to yourself!");
+      const { handleLaunchText } = await import("./launch");
+      const userSession = await getSession(userId);
+      if (handleLaunchText(userId, ctx.message.text, userSession, ctx)) return;
 
-        await ctx.replyWithMarkdown(
-          `⏳ *Processing...*\n\nSending ${sendAmount.toFixed(4)} SOL...`,
-        );
+      if (!userSession?.waitingForAmount && !userSession?.waitingForAddress) return;
 
-        const transaction = new Transaction().add(
-          SystemProgram.transfer({
-            fromPubkey: userKeypair.publicKey,
-            toPubkey: toPublicKey,
-            lamports: Math.floor(sendAmount * LAMPORTS_PER_SOL),
-          }),
-        );
+      try {
+          const userKeypair = await getUserKeypair(userId);
+          if (!userKeypair)
+              return ctx.reply("❌ No wallet found. Use /start to create one.");
 
-        const signature = await sendAndConfirmTransaction(
-          connection,
-          transaction,
-          [userKeypair],
-        );
-        await saveTransaction(userId, 'send', sendAmount, signature, 'success', 'SOL');
+          if (userSession?.waitingForAmount) {
+              const input = ctx.message.text.trim().toLowerCase();
+              const balance = await getBalance(userKeypair.publicKey);
+              let amount: number;
 
-        const newBalance = await getBalance(userKeypair.publicKey);
-        SESSION[userId] = {};
+              if (input === "all" || input === "max") {
+                  amount = Math.max(0, balance - 0.001);
+                  if (amount <= 0)
+                      return ctx.reply("❌ Insufficient balance for fees.");
+              } else {
+                  amount = parseFloat(input);
+                  if (isNaN(amount) || amount <= 0)
+                      return ctx.reply("❌ Invalid amount.");
+                  if (amount > balance)
+                      return ctx.replyWithMarkdown(
+                          `❌ *Insufficient Balance*\n\nRequested: ${amount} SOL\nAvailable: ${balance.toFixed(4)} SOL`
+                      );
+              }
 
-        return ctx.replyWithMarkdown(
-          `✅ *Transaction Successful!*\n\n` +
-            `💰 Sent: ${sendAmount.toFixed(4)} SOL\n` +
-            `📊 New Balance: ${newBalance.toFixed(4)} SOL\n` +
-            `📍 To: \`${address}\`\n\n` +
-            `🔗 [View on Solscan](https://solscan.io/tx/${signature})`,
-          Markup.inlineKeyboard([
-            [
-              Markup.button.url(
-                "🌐 Explorer",
-                `https://explorer.solana.com/tx/${signature}`,
-              ),
-            ],
-            [
-              Markup.button.callback("💸 Send More", "send_sol"),
-              Markup.button.callback("🏠 Menu", "main_menu"),
-            ],
-          ]),
-        );
+              await setSession(userId, { waitingForAddress: true, sendAmount: amount });
+              return ctx.replyWithMarkdown(
+                  `✅ Amount: ${amount.toFixed(4)} SOL\n\n📨 Now enter the *recipient address*:\n\n_Type /cancel to abort_`
+              );
+          }
+
+          if (userSession?.waitingForAddress) {
+              const address = ctx.message.text.trim();
+              const sendAmount = userSession.sendAmount || 0;
+              const toPublicKey = new PublicKey(address);
+
+              if (toPublicKey.equals(userKeypair.publicKey))
+                  return ctx.reply("❌ Cannot send to yourself!");
+
+              await ctx.replyWithMarkdown(
+                  `⏳ *Processing...*\n\nSending ${sendAmount.toFixed(4)} SOL...`
+              );
+
+              const transaction = new Transaction().add(
+                  SystemProgram.transfer({
+                      fromPubkey: userKeypair.publicKey,
+                      toPubkey: toPublicKey,
+                      lamports: Math.floor(sendAmount * LAMPORTS_PER_SOL),
+                  })
+              );
+
+              const signature = await sendAndConfirmTransaction(
+                  connection, transaction, [userKeypair]
+              );
+              await saveTransaction(userId, 'send', sendAmount, signature, 'success', 'SOL');
+              await clearSession(userId);
+              const newBalance = await getBalance(userKeypair.publicKey);
+
+              return ctx.replyWithMarkdown(
+                  `✅ *Transaction Successful!*\n\n` +
+                  `💰 Sent: ${sendAmount.toFixed(4)} SOL\n` +
+                  `📊 New Balance: ${newBalance.toFixed(4)} SOL\n` +
+                  `📍 To: \`${address}\`\n\n` +
+                  `🔗 [View on Solscan](https://solscan.io/tx/${signature})`,
+                  Markup.inlineKeyboard([
+                      [Markup.button.url("🌐 Explorer", `https://explorer.solana.com/tx/${signature}`)],
+                      [Markup.button.callback("💸 Send More", "send_sol"), Markup.button.callback("🏠 Menu", "main_menu")],
+                  ])
+              );
+          }
+      } catch (error: any) {
+          await clearSession(userId);
+          let msg = "❌ *Transaction Failed*\n\n";
+          if (error.message?.includes("invalid")) msg += "Invalid Solana address.";
+          else if (error.message?.includes("insufficient")) msg += "Insufficient funds.";
+          else msg += error.message || "Unknown error";
+          ctx.replyWithMarkdown(msg, mainKeyboard());
       }
-    } catch (error: any) {
-      SESSION[userId] = {};
-      let msg = "❌ *Transaction Failed*\n\n";
-      if (error.message?.includes("invalid")) msg += "Invalid Solana address.";
-      else if (error.message?.includes("insufficient"))
-        msg += "Insufficient funds.";
-      else msg += error.message || "Unknown error";
-      ctx.replyWithMarkdown(msg, mainKeyboard());
-    }
   });
 }
