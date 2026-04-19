@@ -11,7 +11,7 @@ async function testAll() {
     // 1. Test Solana
     console.log("\n🟣 Testing SOLANA...");
     try {
-        const conn = getSolanaConnection();
+        const conn = await getSolanaConnection();
         const slot = await conn.getSlot();
         console.log(`✅ Solana Success! Current Slot: ${slot}`);
         const version = await conn.getVersion();
@@ -25,7 +25,7 @@ async function testAll() {
     for (const chain of evmChains) {
         console.log(`\n🌐 Testing ${chain.toUpperCase()}...`);
         try {
-            const provider = getEVMProvider(chain);
+            const provider = await getEVMProvider(chain);
             const block = await provider.getBlockNumber();
             console.log(`✅ ${chain} Success! Current Block: ${block}`);
             

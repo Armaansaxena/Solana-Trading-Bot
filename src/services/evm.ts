@@ -5,47 +5,43 @@ import { getEVMProvider } from "./rpc";
 
 export async function createEVMWallet(userId: number, name: string = "Main EVM Wallet") {
     const wallet = ethers.Wallet.createRandom();
-    const { iv, content } = encrypt(wallet.privateKey);
+    const encrypted = encrypt(wallet.privateKey);
 
-    const dbWallet = await prisma.wallet.create({
+    const newWallet = await prisma.wallet.create({
         data: {
-            userId: userId,
+            userId,
             publicKey: wallet.address,
-            encryptedKey: content,
-            iv: iv,
-            name: name,
+            encryptedKey: encrypted.content,
+            iv: encrypted.iv,
+            name,
             chain: "evm"
         }
     });
 
-    return dbWallet;
+    return newWallet;
 }
 
 export async function getEVMKeypair(userId: number, chain: "ethereum" | "base" = "ethereum") {
     const user = await prisma.user.findUnique({
         where: { telegramId: BigInt(userId) },
-        include: { activeWallet: true }
+        include: { wallets: true }
     });
 
-    if (!user || !user.activeWallet || user.activeWallet.chain !== "evm") return null;
+    const wallet = user?.wallets.find(w => w.chain === "evm");
+    if (!wallet) return null;
 
-    const privateKey = decrypt(user.activeWallet.iv, user.activeWallet.encryptedKey);
-    return new ethers.Wallet(privateKey, getEVMProvider(chain));
+    const privateKey = decrypt(wallet.iv, wallet.encryptedKey);
+    const provider = await getEVMProvider(chain);
+    return new ethers.Wallet(privateKey, provider);
 }
 
 export async function getEVMBalance(address: string, chain: "ethereum" | "base") {
     try {
-        // Fail-safe: Ensure address is a valid EVM address format
-        if (!address || !address.startsWith("0x") || address.length !== 42) {
-            console.warn(`⚠️ getEVMBalance: Invalid EVM address provided: ${address}`);
-            return 0;
-        }
-
-        const provider = getEVMProvider(chain);
+        const provider = await getEVMProvider(chain);
         const balance = await provider.getBalance(address);
         return parseFloat(ethers.formatEther(balance));
     } catch (error) {
-        console.error(`Error fetching ${chain} balance for ${address}:`, error);
+        console.error("EVM Balance error:", error);
         return 0;
     }
 }
