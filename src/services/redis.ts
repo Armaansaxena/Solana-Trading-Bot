@@ -36,3 +36,24 @@ export async function clearSession(userId: number): Promise<void> {
         console.error("Redis del error:", error);
     }
 }
+
+// --- DYNAMIC FEE MANAGEMENT ---
+export async function getFeePercentage(): Promise<number> {
+    try {
+        const feeStr = await redis.get<string>("global:fee_percentage");
+        if (feeStr !== null) {
+            return parseFloat(feeStr);
+        }
+    } catch (e) {}
+    // Default fallback is from ENV or 0.005 (0.5%)
+    return parseFloat(process.env.FEE_PERCENTAGE || "0.005");
+}
+
+export async function setFeePercentage(fee: number): Promise<void> {
+    try {
+        await redis.set("global:fee_percentage", fee.toString());
+        console.log(`💰 Global fee percentage updated to: ${fee * 100}%`);
+    } catch (error) {
+        console.error("Redis set fee error:", error);
+    }
+}
