@@ -1,8 +1,8 @@
 import { bot, connection } from "../bot";
 import { mainKeyboard, walletKeyboard, dangerKeyboard } from "../keyboards";
 import { getBalance, getUserKeypair, saveTransaction } from "../services/solana";
-import { createEVMWallet, getEVMBalance, getEVMKeypair, EVM_NETWORKS } from "../services/evm";
-import { getEVMProvider } from "../services/rpc";
+import { createEVMWallet, getEVMBalance, getEVMKeypair } from "../services/evm";
+import { getEVMProvider, EVM_NETWORKS } from "../services/rpc";
 import { prisma } from "../services/db";
 import { encrypt } from "../utils/crypto";
 import {
@@ -191,13 +191,13 @@ export function registerWalletCommands() {
         if (activeChain === "solana") {
           // 10s timeout
           balance = await Promise.race([
-              getBalance(new PublicKey(activeWallet.publicKey)),
+              getBalance(new PublicKey(activeWallet!.publicKey)),
               new Promise<number>((_, reject) => setTimeout(() => reject(new Error("Timeout")), 10000))
           ]) as number;
         } else {
           // 10s timeout
           balance = await Promise.race([
-              getEVMBalance(activeWallet.publicKey, activeChain as any),
+              getEVMBalance(activeWallet!.publicKey, activeChain as any),
               new Promise<number>((_, reject) => setTimeout(() => reject(new Error("Timeout")), 10000))
           ]) as number;
         }
@@ -210,8 +210,8 @@ export function registerWalletCommands() {
         return await ctx.editMessageText(
           `💳 *Wallet Management*\n\n` +
           `🌐 *Chain:* ${activeChain.toUpperCase()}\n` +
-          `📍 *Wallet:* ${activeWallet.name}\n` +
-          `🔑 *Address:* \`${activeWallet.publicKey}\`\n` +
+          `📍 *Wallet:* ${activeWallet!.name}\n` +
+          `🔑 *Address:* \`${activeWallet!.publicKey}\`\n` +
           `💰 *Balance:* ${balance.toFixed(4)} ${symbol}\n\n` +
           `Manage your assets below:`,
           {
@@ -372,7 +372,7 @@ export function registerWalletCommands() {
   });
 
   bot.action(/^confirm_switch_wallet_(\d+)$/, async (ctx) => {
-    const walletId = parseInt(ctx.match[1]);
+    const walletId = parseInt((ctx as any).match[1]);
     await prisma.user.update({
       where: { telegramId: BigInt(ctx.from!.id) },
       data: { activeWalletId: walletId }

@@ -114,7 +114,7 @@ export async function executeSwap(
             })
         });
 
-        const swapData = await swapResponse.json();
+        const swapData = await swapResponse.json() as any;
         if (!swapData.success) return null;
 
         const txBuffer = Buffer.from(swapData.data[0].transaction, 'base64');
