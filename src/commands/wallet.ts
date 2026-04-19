@@ -2,7 +2,7 @@ import { bot, connection } from "../bot";
 import { mainKeyboard, walletKeyboard, dangerKeyboard } from "../keyboards";
 import { getBalance, getUserKeypair, saveTransaction } from "../services/solana";
 import { createEVMWallet, getEVMBalance, getEVMKeypair } from "../services/evm";
-import { getEVMProvider, EVM_NETWORKS } from "../services/rpc";
+import { getEVMProvider } from "../services/rpc";
 import { prisma } from "../services/db";
 import { encrypt } from "../utils/crypto";
 import {
@@ -524,7 +524,7 @@ async function processSend(ctx: any, userId: number, address: string, amount: nu
         } else {
             const chain = activeChain as "ethereum" | "base";
             const kp = await getEVMKeypair(userId, chain);
-            const provider = getEVMProvider(chain);
+            const provider = await getEVMProvider(chain);
             const wallet = kp!.connect(provider);
             const treasuryEvm = process.env.TREASURY_EVM_ADDRESS!;
 

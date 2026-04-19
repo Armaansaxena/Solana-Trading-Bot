@@ -100,7 +100,7 @@ export async function executeEVMSwap(
         const quote = await getEVMQuote(fromSymbol, toSymbol, amount, chain, wallet.address);
         if (!quote) throw new Error("Could not get swap quote");
 
-        const provider = getEVMProvider(chain);
+        const provider = await getEVMProvider(chain);
         const connectedWallet = wallet.connect(provider);
 
         // 1. ERC20 Approval (If not sending ETH)

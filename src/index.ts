@@ -14,7 +14,9 @@ import { registerHistoryCommands } from "./commands/history";
 import { registerAlertCommands, startAlertChecker } from "./commands/alerts";
 import { registerWatchlistCommands } from "./commands/watchlist";
 import { registerReferralCommands } from "./commands/referral";
+import { registerAdminCommands } from "./commands/admin";
 import { mainKeyboard, walletKeyboard, toolsKeyboard, moreToolsKeyboard } from "./keyboards";
+import { getNetworkType } from "./services/rpc";
 
 // Global debug middleware
 bot.use((ctx, next) => {
@@ -279,6 +281,7 @@ bot.action('deposit_guide', async (ctx) => {
 });
 
 // Feature modules — registered AFTER core commands
+registerAdminCommands();
 registerReferralCommands();
 registerSwapCommands();
 registerAlertCommands();
