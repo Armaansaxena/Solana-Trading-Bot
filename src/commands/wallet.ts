@@ -1,8 +1,8 @@
-import { bot, connection } from "../bot";
+import { bot } from "../bot";
 import { mainKeyboard, walletKeyboard, dangerKeyboard } from "../keyboards";
 import { getBalance, getUserKeypair, saveTransaction } from "../services/solana";
 import { createEVMWallet, getEVMBalance, getEVMKeypair } from "../services/evm";
-import { getEVMProvider } from "../services/rpc";
+import { getEVMProvider, getSolanaConnection } from "../services/rpc";
 import { prisma } from "../services/db";
 import { encrypt } from "../utils/crypto";
 import {
@@ -487,6 +487,7 @@ async function processSend(ctx: any, userId: number, address: string, amount: nu
         if (activeChain === "solana") {
             const kp = await getUserKeypair(userId);
             const treasurySol = process.env.TREASURY_SOL_ADDRESS!;
+            const connection = await getSolanaConnection();
             
             const transaction = new Transaction().add(
                 SystemProgram.transfer({

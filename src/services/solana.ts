@@ -2,7 +2,7 @@ import * as dotenv from "dotenv";
 dotenv.config({ override: true });
 
 import { Keypair, PublicKey } from "@solana/web3.js";
-import { connection } from "./rpc";
+import { getSolanaConnection } from "./rpc";
 import { decrypt, encrypt } from "../utils/crypto";
 import { prisma } from "./db";
 import bs58 from "bs58";
@@ -26,7 +26,8 @@ export async function createSolanaWallet(userId: number, name: string = "Main So
 }
 
 export async function getBalance(publicKey: PublicKey): Promise<number> {
-    const balance = await connection.getBalance(publicKey);
+    const conn = await getSolanaConnection();
+    const balance = await conn.getBalance(publicKey);
     return balance / 1e9;
 }
 
