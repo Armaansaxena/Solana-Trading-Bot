@@ -400,6 +400,20 @@ export function registerWalletCommands() {
       if (!userId || ctx.message.text.startsWith('/')) return;
 
       const userSession = await getSession(userId);
+
+      // --- ADMIN CUSTOM FEE HANDLER ---
+      if ((userSession as any)?.waitingForCustomFee) {
+          const val = parseFloat(ctx.message.text);
+          if (isNaN(val) || val < 0 || val > 100) return ctx.reply("❌ Invalid fee. Enter 0-100:");
+          
+          const { setFeePercentage } = await import("../services/redis");
+          await setFeePercentage(val / 100);
+          await clearSession(userId);
+          return ctx.replyWithMarkdown(`✅ *Global fee updated to ${val}%*`, Markup.inlineKeyboard([
+              [Markup.button.callback('🔙 Back to Admin', 'admin_main_menu')]
+          ]));
+      }
+
       const { handleLaunchText } = await import("./launch");
       if (await handleLaunchText(userId, ctx.message.text, userSession, ctx)) return;
 
