@@ -68,7 +68,7 @@ export function registerPortfolioCommands() {
     });
 
     bot.command('portfolio', async (ctx) => {
-        const userId = ctx.from.id;
+        const userId = ctx.from!.id;
         await showPortfolio(ctx, userId);
     });
 
@@ -79,8 +79,10 @@ export function registerPortfolioCommands() {
                 include: { wallets: true }
             });
 
+            const activeChain = user?.activeChain || "solana";
+
             if (!user || user.wallets.length === 0) {
-                return ctx.replyWithMarkdown("❌ No wallets found. Generate one first!", mainKeyboard());
+                return ctx.replyWithMarkdown("❌ No wallets found. Generate one first!", mainKeyboard(activeChain));
             }
 
             await ctx.replyWithMarkdown("⏳ *Fetching all wallet balances...*");
