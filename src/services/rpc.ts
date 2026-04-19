@@ -38,7 +38,7 @@ interface RPCLatency {
     latency: number;
 }
 
-const latencies: Record<string, RPCLatency[]> = {
+const latencies: Record<"solana" | "ethereum" | "base", RPCLatency[]> = {
     solana: [],
     ethereum: [],
     base: []
@@ -79,7 +79,10 @@ async function updateLatencies(chain: "solana" | "ethereum" | "base") {
     
     if (latencies[chain].length > 0) {
         delete providerCache[chain]; // Refresh provider on next call
-        console.log(`⚡ Fastest ${chain} RPC: ${latencies[chain][0].url} (${latencies[chain][0].latency}ms)`);
+        const fastest = latencies[chain][0];
+        if (fastest) {
+            console.log(`⚡ Fastest ${chain} RPC: ${fastest.url} (${fastest.latency}ms)`);
+        }
     }
 }
 
@@ -100,11 +103,11 @@ updateLatencies("base");
 export function getSolanaConnection() {
     if (providerCache.solana) return providerCache.solana;
     
-    const url = latencies.solana.length > 0 && latencies.solana[0].latency < 9999 
+    const url = (latencies.solana.length > 0 && latencies.solana[0] && latencies.solana[0].latency < 9999)
         ? latencies.solana[0].url 
         : SOLANA_RPCS[0];
     
-    providerCache.solana = new Connection(url, "confirmed");
+    providerCache.solana = new Connection(url!, "confirmed");
     return providerCache.solana;
 }
 
@@ -116,15 +119,18 @@ export function getEVMProvider(chain: "ethereum" | "base") {
         ? latencies[chain].map(l => l.url)
         : EVM_NETWORKS[chain].rpcs;
 
-    const providers = sortedRpcs.map(url => new ethers.JsonRpcProvider(url, chainId, { 
-        staticNetwork: true,
-        batchMaxCount: 1
+    const providerConfigs = sortedRpcs.map(url => ({
+        provider: new ethers.JsonRpcProvider(url, chainId, { 
+            staticNetwork: true,
+            batchMaxCount: 1
+        }),
+        stallTimeout: 500,
+        weight: 1,
+        priority: 1
     }));
     
-    providerCache[chain] = new ethers.FallbackProvider(providers, chainId, {
-        quorum: 1,
-        stallTimeout: 500,
-        weight: 1
+    providerCache[chain] = new ethers.FallbackProvider(providerConfigs, chainId, {
+        quorum: 1
     });
 
     return providerCache[chain];

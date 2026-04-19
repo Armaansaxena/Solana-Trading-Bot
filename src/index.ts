@@ -52,6 +52,8 @@ bot.start(async (ctx: Context) => {
     const chainType = (currentChain === 'ethereum' || currentChain === 'base') ? 'evm' : 'solana';
     const activeWallet = user.wallets.find(w => w.chain === chainType) || user.wallets[0];
 
+    if (!activeWallet) return ctx.reply("❌ No wallet found. Please /start again.");
+
     return ctx.replyWithMarkdown(
         "🚀 *Welcome back to SolBot V3*\n\n" +
         `📍 *Active Wallet (${currentChain.toUpperCase()}):* \`${activeWallet.publicKey.slice(0, 4)}...${activeWallet.publicKey.slice(-4)}\`\n` +
@@ -124,7 +126,7 @@ import { createSolanaWallet } from "./services/solana";
 import { createEVMWallet } from "./services/evm";
 
 bot.action(/^confirm_switch_chain_(solana|ethereum|base)$/, async (ctx) => {
-    const newChain = ctx.match[1];
+    const newChain = (ctx as any).match[1];
     const userId = ctx.from!.id;
 
     try {
