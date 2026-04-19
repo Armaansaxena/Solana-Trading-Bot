@@ -1,5 +1,5 @@
 import { bot } from "../bot";
-import { prisma } from "../services/solana";
+import { prisma } from "../services/db";
 import { mainKeyboard } from "../keyboards";
 import { Markup } from "telegraf";
 

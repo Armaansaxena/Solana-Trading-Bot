@@ -9,12 +9,33 @@ datasource db {
 }
 
 model User {
+  id              Int      @id @default(autoincrement())
+  telegramId      BigInt   @unique
+  activeWalletId  Int?
+  activeChain     String   @default("solana")
+  createdAt       DateTime @default(now())
+
+  wallets         Wallet[]
+  activeWallet    Wallet?  @relation("ActiveWallet", fields: [activeWalletId], references: [id], onDelete: SetNull)
+
+  // Keep for migration, will drop later
+  publicKey       String?
+  encryptedKey    String?
+  iv              String?
+}
+
+model Wallet {
   id           Int      @id @default(autoincrement())
-  telegramId   BigInt   @unique
-  publicKey    String
+  userId       Int
+  name         String   @default("Main Wallet")
+  publicKey    String   @unique
   encryptedKey String
   iv           String
+  chain        String   @default("solana")
   createdAt    DateTime @default(now())
+
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  activeUsers  User[]   @relation("ActiveWallet")
 }
 
 model transaction {

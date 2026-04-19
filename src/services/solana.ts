@@ -2,15 +2,28 @@ import * as dotenv from "dotenv";
 dotenv.config({ override: true });
 
 import { Keypair, PublicKey } from "@solana/web3.js";
-import { connection } from "../bot";
-import { decrypt } from "../utils/crypto";
-import { PrismaClient } from "@prisma/client";
-import { PrismaPg } from "@prisma/adapter-pg";
+import { connection } from "./rpc";
+import { decrypt, encrypt } from "../utils/crypto";
+import { prisma } from "./db";
 import bs58 from "bs58";
 
-const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL });
-const prisma = new PrismaClient({ adapter });
-export { prisma };
+export async function createSolanaWallet(userId: number, name: string = "Main Solana Wallet") {
+    const kp = Keypair.generate();
+    const { iv, content } = encrypt(bs58.encode(kp.secretKey));
+
+    const dbWallet = await prisma.wallet.create({
+        data: {
+            userId: userId,
+            publicKey: kp.publicKey.toBase58(),
+            encryptedKey: content,
+            iv: iv,
+            name: name,
+            chain: "solana"
+        }
+    });
+
+    return dbWallet;
+}
 
 export async function getBalance(publicKey: PublicKey): Promise<number> {
     const balance = await connection.getBalance(publicKey);
@@ -19,20 +32,32 @@ export async function getBalance(publicKey: PublicKey): Promise<number> {
 
 export async function getUserKeypair(telegramId: number): Promise<Keypair | null> {
     const user = await prisma.user.findUnique({
-        where: { telegramId: BigInt(telegramId) }
+        where: { telegramId: BigInt(telegramId) },
+        include: { activeWallet: true }
     });
+    
     if (!user) return null;
 
-    const decryptedKey = decrypt(user.iv, user.encryptedKey);
+    // Use active wallet if exists, otherwise fallback to legacy columns
+    const wallet = user.activeWallet;
+    const iv = wallet ? wallet.iv : user.iv;
+    const encryptedKey = wallet ? wallet.encryptedKey : user.encryptedKey;
+
+    if (!iv || !encryptedKey) return null;
+
+    const decryptedKey = decrypt(iv, encryptedKey);
     const secretKeyArray = bs58.decode(decryptedKey);
     return Keypair.fromSecretKey(secretKeyArray);
 }
 
 export async function getUserPublicKey(telegramId: number): Promise<string | null> {
     const user = await prisma.user.findUnique({
-        where: { telegramId: BigInt(telegramId) }
+        where: { telegramId: BigInt(telegramId) },
+        include: { activeWallet: true }
     });
-    return user?.publicKey || null;
+    
+    if (!user) return null;
+    return user.activeWallet?.publicKey || user.publicKey || null;
 }
 
 export async function saveTransaction(
