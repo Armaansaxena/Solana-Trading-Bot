@@ -3,11 +3,13 @@ import { getUserKeypair, getBalance } from "../services/solana";
 import { getEVMBalance } from "../services/evm";
 import { prisma } from "../services/db";
 import { getQuote, TOKEN_MINTS, formatTokenAmount } from "../services/jupiter";
+import { getEVMQuote } from "../services/evm_swap";
 import { mainKeyboard } from "../keyboards";
 import { Markup } from "telegraf";
 import { PublicKey } from "@solana/web3.js";
 import Groq from "groq-sdk";
 import { getSession, setSession, clearSession } from "../services/redis";
+import { ethers } from "ethers";
 
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 
@@ -138,14 +140,15 @@ async function handleAIMessage(ctx: any, userId: number, text: string) {
             include: { activeWallet: true }
         });
 
+        const activeChain = user?.activeChain || "solana";
+
         if (!user || !user.activeWallet) {
             return ctx.replyWithMarkdown(
                 "❌ No active wallet found. Generate one first with /start",
-                mainKeyboard()
+                mainKeyboard(activeChain)
             );
         }
 
-        const activeChain = user.activeChain || "solana";
         const assetSymbol = (activeChain === "ethereum" || activeChain === "base") ? "ETH" : "SOL";
 
         await ctx.replyWithMarkdown(`🤖 _Thinking (${activeChain.toUpperCase()})..._`);
@@ -189,30 +192,31 @@ async function handleAIMessage(ctx: any, userId: number, text: string) {
 
             case "get_price": {
                 const token = intent.params.token?.toUpperCase();
-                if (activeChain !== "solana") {
-                    return ctx.reply(`🤖 Price lookups for ${activeChain.toUpperCase()} are coming soon!`);
+                if (!token) return ctx.reply("🤖 Please specify a token symbol.");
+
+                if (activeChain === "solana") {
+                    if (!TOKEN_MINTS[token]) return ctx.reply(`🤖 Unknown Solana token: ${token}`);
+                    const quote = await getQuote(token, "USDC", 1);
+                    if (!quote) return ctx.reply("🤖 Could not fetch price right now.");
+                    const price = formatTokenAmount(quote.outAmount, "USDC");
+                    return ctx.replyWithMarkdown(
+                        `🤖 *${intent.message}*\n\n` +
+                        `💰 1 ${token} = $${price} USDC`,
+                        mainKeyboard(activeChain)
+                    );
+                } else {
+                    const quote = await getEVMQuote(token, "USDC", 1, activeChain as any, "0x0000000000000000000000000000000000000000");
+                    if (!quote) return ctx.reply(`🤖 Could not fetch ${activeChain} price for ${token}.`);
+                    const price = ethers.formatUnits(quote.toAmount, 6);
+                    return ctx.replyWithMarkdown(
+                        `🤖 *${intent.message}*\n\n` +
+                        `💰 1 ${token} = $${price} USDC (Estimated)`,
+                        mainKeyboard(activeChain)
+                    );
                 }
-
-                if (!token || !TOKEN_MINTS[token]) {
-                    return ctx.reply(`🤖 Unknown token: ${token}`);
-                }
-
-                const quote = await getQuote(token, "USDC", 1);
-                if (!quote) return ctx.reply("🤖 Could not fetch price right now.");
-
-                const price = formatTokenAmount(quote.outAmount, "USDC");
-                return ctx.replyWithMarkdown(
-                    `🤖 *${intent.message}*\n\n` +
-                    `💰 1 ${token} = $${price} USDC`,
-                    mainKeyboard(activeChain)
-                );
             }
 
             case "swap_tokens": {
-                if (activeChain !== "solana") {
-                    return ctx.reply(`🤖 Token swapping on ${activeChain.toUpperCase()} is coming soon!`);
-                }
-
                 const { fromToken, toToken, amount } = intent.params;
                 if (!fromToken || !toToken || !amount) {
                     return ctx.reply("🤖 Please specify: from token, to token, and amount.");
@@ -225,14 +229,20 @@ async function handleAIMessage(ctx: any, userId: number, text: string) {
                     sendAmount: amount
                 });
 
-                const quote = await getQuote(fromToken, toToken, amount);
-                if (!quote) return ctx.reply("🤖 Could not get swap quote.");
-
-                const outAmount = formatTokenAmount(quote.outAmount, toToken);
+                let outAmount = "0";
+                if (activeChain === "solana") {
+                    const quote = await getQuote(fromToken, toToken, amount);
+                    if (!quote) return ctx.reply("🤖 Could not get swap quote.");
+                    outAmount = formatTokenAmount(quote.outAmount, toToken);
+                } else {
+                    const quote = await getEVMQuote(fromToken, toToken, amount, activeChain as any, "0x0000000000000000000000000000000000000000");
+                    if (!quote) return ctx.reply(`🤖 Could not get ${activeChain} swap quote.`);
+                    outAmount = ethers.formatUnits(quote.toAmount, 6);
+                }
 
                 return ctx.replyWithMarkdown(
                     `🤖 *${intent.message}*\n\n` +
-                    `🔄 *Swap Preview*\n` +
+                    `🔄 *Swap Preview (${activeChain.toUpperCase()})*\n` +
                     `📤 You pay: \`${amount} ${fromToken.toUpperCase()}\`\n` +
                     `📥 You get: \`${outAmount} ${toToken.toUpperCase()}\`\n\n` +
                     `_Confirm to execute_`,
@@ -249,7 +259,6 @@ async function handleAIMessage(ctx: any, userId: number, text: string) {
             case "send_sol": {
                 const { amount, address } = intent.params;
 
-                // Case 1: Both provided - direct confirmation
                 if (amount && address) {
                     await setSession(userId, { 
                         waitingForAddress: true, 
@@ -271,7 +280,6 @@ async function handleAIMessage(ctx: any, userId: number, text: string) {
                     );
                 }
 
-                // Case 2: Only address provided - ask for amount
                 if (address && !amount) {
                     await setSession(userId, { waitingForAmount: true, receiverAddress: address });
                     return ctx.replyWithMarkdown(
@@ -281,7 +289,6 @@ async function handleAIMessage(ctx: any, userId: number, text: string) {
                     );
                 }
 
-                // Case 3: Only amount provided - ask for address
                 if (amount && !address) {
                     await setSession(userId, { waitingForAddress: true, sendAmount: amount });
                     return ctx.replyWithMarkdown(
@@ -291,7 +298,6 @@ async function handleAIMessage(ctx: any, userId: number, text: string) {
                     );
                 }
 
-                // Case 4: Neither provided
                 await setSession(userId, { waitingForAmount: true });
                 return ctx.replyWithMarkdown(
                     `🤖 *${intent.message}*\n\n` +

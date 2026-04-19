@@ -12,6 +12,7 @@ import { prisma } from "../services/db";
 import { Markup } from "telegraf";
 import { getSession, setSession, clearSession } from "../services/redis";
 import type { Context } from "telegraf";
+import { ethers } from "ethers";
 
 export function registerSwapCommands() {
 
@@ -37,16 +38,21 @@ export function registerSwapCommands() {
     bot.command("swap", async (ctx) => {
         const userId = ctx.from!.id;
         const user = await prisma.user.findUnique({ where: { telegramId: BigInt(userId) } });
-        const chain = user?.activeChain || "solana";
+        const chain = (user?.activeChain || "solana") as "solana" | "ethereum" | "base";
 
         const args = (ctx.message as any).text.split(" ").slice(1);
         if (args.length !== 3) {
             return ctx.replyWithMarkdown(`❌ Usage: \`/swap FROM TO AMOUNT\``);
         }
 
-        const [fromToken, toToken, amountStr] = args;
+        const fromToken = args[0]?.toUpperCase();
+        const toToken = args[1]?.toUpperCase();
+        const amountStr = args[2];
         const amount = parseFloat(amountStr ?? "0");
-        if (isNaN(amount) || amount <= 0) return ctx.reply("❌ Invalid amount.");
+
+        if (!fromToken || !toToken || isNaN(amount) || amount <= 0) {
+            return ctx.reply("❌ Invalid swap parameters. Use: /swap SOL USDC 1");
+        }
 
         try {
             await ctx.replyWithMarkdown(`⏳ *Getting best route on ${chain.toUpperCase()}...*`);
@@ -55,12 +61,13 @@ export function registerSwapCommands() {
             let priceImpact = "0";
 
             if (chain === "solana") {
-                const quote = await getQuote(fromToken!, toToken!, amount);
+                const quote = await getQuote(fromToken, toToken, amount);
                 if (!quote) return ctx.reply("❌ No route found.");
-                outAmount = formatTokenAmount(quote.outAmount, toToken!);
+                outAmount = formatTokenAmount(quote.outAmount, toToken);
                 priceImpact = quote.priceImpactPct;
             } else {
-                const quote = await getEVMQuote(fromToken!, toToken!, amount, chain as any, "0x0000000000000000000000000000000000000000"); // Address only for quote
+                // Address only for quote simulation for now
+                const quote = await getEVMQuote(fromToken, toToken, amount, chain, "0x0000000000000000000000000000000000000000"); 
                 if (!quote) return ctx.reply("❌ No route found.");
                 outAmount = ethers.formatUnits(quote.toAmount, 6); // Mocked USDC decimals
                 priceImpact = "0.5";
@@ -68,15 +75,15 @@ export function registerSwapCommands() {
 
             await setSession(userId, {
                 waitingForSwapAmount: true,
-                swapFromToken: fromToken?.toUpperCase(),
-                swapToToken: toToken?.toUpperCase(),
+                swapFromToken: fromToken,
+                swapToToken: toToken,
                 sendAmount: amount,
             });
 
             return ctx.replyWithMarkdown(
                 `🔄 *Swap Preview (${chain.toUpperCase()})*\n\n` +
-                `📤 Pay: \`${amount} ${fromToken?.toUpperCase()}\`\n` +
-                `📥 Get: \`~${outAmount} ${toToken?.toUpperCase()}\`\n` +
+                `📤 Pay: \`${amount} ${fromToken}\`\n` +
+                `📥 Get: \`~${outAmount} ${toToken}\`\n` +
                 `📊 Impact: ${priceImpact}%\n\n` +
                 `_Confirm to execute swap_`,
                 Markup.inlineKeyboard([
@@ -97,10 +104,12 @@ export function registerSwapCommands() {
         const session = await getSession(userId);
         const user = await prisma.user.findUnique({ where: { telegramId: BigInt(userId) } });
 
-        if (!session?.swapFromToken || !session?.sendAmount) return ctx.reply("❌ Session expired.");
+        if (!session?.swapFromToken || !session?.sendAmount) {
+            return (ctx as any).answerCbQuery("❌ Session expired.", { show_alert: true });
+        }
 
         await ctx.answerCbQuery("Executing...");
-        const chain = user?.activeChain || "solana";
+        const chain = (user?.activeChain || "solana") as "solana" | "ethereum" | "base";
 
         try {
             let signature = "";
@@ -108,9 +117,9 @@ export function registerSwapCommands() {
                 const kp = await getUserKeypair(userId);
                 signature = await executeSwap(kp!, session.swapFromToken, session.swapToToken!, session.sendAmount) || "";
             } else {
-                const kp = await getEVMKeypair(userId, chain as any);
+                const kp = await getEVMKeypair(userId, chain);
                 if (!kp) throw new Error("Could not retrieve keypair");
-                signature = await executeEVMSwap(kp, session.swapFromToken, session.swapToToken!, session.sendAmount, chain as any) || "";
+                signature = await executeEVMSwap(kp, session.swapFromToken, session.swapToToken!, session.sendAmount, chain) || "";
             }
 
             await clearSession(userId);
@@ -132,11 +141,10 @@ export function registerSwapCommands() {
         await clearSession(ctx.from!.id);
         await ctx.answerCbQuery("Cancelled");
         try {
-            return await ctx.editMessageText("❌ Swap cancelled.", { reply_markup: mainKeyboard().reply_markup });
+            const user = await prisma.user.findUnique({ where: { telegramId: BigInt(ctx.from!.id) } });
+            return await ctx.editMessageText("❌ Swap cancelled.", { reply_markup: mainKeyboard(user?.activeChain || "solana").reply_markup });
         } catch (e) {
             return ctx.reply("❌ Swap cancelled.", mainKeyboard());
         }
     });
 }
-
-import { ethers } from "ethers";
