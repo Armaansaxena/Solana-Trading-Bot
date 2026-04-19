@@ -5,7 +5,7 @@ import { getQuote, TOKEN_MINTS } from "../services/jupiter";
 import { getEVMBalance } from "../services/evm";
 import { mainKeyboard } from "../keyboards";
 import { PublicKey } from "@solana/web3.js";
-import { connection } from "../services/rpc";
+import { getSolanaConnection } from "../services/rpc";
 import { Markup } from "telegraf";
 
 const TOKEN_PROGRAM_ID = new PublicKey("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA");
@@ -19,6 +19,7 @@ interface TokenBalance {
 
 async function getSolanaTokenBalances(walletAddress: string): Promise<TokenBalance[]> {
     try {
+        const connection = await getSolanaConnection();
         const publicKey = new PublicKey(walletAddress);
         const tokenAccounts = await connection.getParsedTokenAccountsByOwner(
             publicKey,

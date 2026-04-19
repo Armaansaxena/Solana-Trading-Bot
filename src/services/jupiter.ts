@@ -1,4 +1,4 @@
-import { connection } from "./rpc";
+import { getSolanaConnection } from "./rpc";
 import { Keypair, VersionedTransaction, PublicKey, Transaction, SystemProgram, LAMPORTS_PER_SOL } from "@solana/web3.js";
 import * as dotenv from "dotenv";
 
@@ -81,6 +81,8 @@ export async function executeSwap(
     try {
         const quote = await getQuote(fromSymbol, toSymbol, amount);
         if (!quote) return null;
+
+        const connection = await getSolanaConnection();
 
         if (isLocal || quote.isSimulated) {
             console.log("🛠️ Executing Simulated Swap (Localnet)");

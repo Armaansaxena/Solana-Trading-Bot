@@ -1,4 +1,4 @@
-import { bot, connection } from "../bot";
+import { bot } from "../bot";
 import { prisma } from "../services/db";
 import { getUserKeypair, saveTransaction } from "../services/solana";
 import { mainKeyboard } from "../keyboards";
@@ -22,6 +22,7 @@ import {
 } from "@solana/spl-token";
 import { createCreateMetadataAccountV3Instruction } from "@metaplex-foundation/mpl-token-metadata";
 import { getSession, setSession, clearSession } from "../services/redis";
+import { getSolanaConnection } from "../services/rpc";
 
 const TOKEN_METADATA_PROGRAM_ID = new PublicKey(
     "metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s"
@@ -211,6 +212,8 @@ export function registerLaunchCommands() {
         try {
             const keypair = await getUserKeypair(userId);
             if (!keypair) return ctx.reply("❌ No wallet found.");
+
+            const connection = await getSolanaConnection();
 
             const mintKeypair = Keypair.generate();
             const rentLamports = await getMinimumBalanceForRentExemptMint(connection);
