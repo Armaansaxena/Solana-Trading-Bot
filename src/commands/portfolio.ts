@@ -1,13 +1,13 @@
 import { bot } from "../bot";
-import { getUserKeypair, getBalance, prisma } from "../services/solana";
-import { getQuote, TOKEN_MINTS, formatTokenAmount } from "../services/jupiter";
-import { mainKeyboard, postWalletKeyboard } from "../keyboards";
-import { PublicKey, Connection } from "@solana/web3.js";
-import { connection } from "../bot";
+import { getBalance } from "../services/solana";
+import { prisma } from "../services/db";
+import { getQuote, TOKEN_MINTS } from "../services/jupiter";
+import { getEVMBalance } from "../services/evm";
+import { mainKeyboard } from "../keyboards";
+import { PublicKey } from "@solana/web3.js";
+import { connection } from "../services/rpc";
 import { Markup } from "telegraf";
 
-
-// Token program ID
 const TOKEN_PROGRAM_ID = new PublicKey("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA");
 
 interface TokenBalance {
@@ -17,18 +17,15 @@ interface TokenBalance {
     usdValue: number;
 }
 
-async function getTokenBalances(walletAddress: string): Promise<TokenBalance[]> {
+async function getSolanaTokenBalances(walletAddress: string): Promise<TokenBalance[]> {
     try {
         const publicKey = new PublicKey(walletAddress);
-        
         const tokenAccounts = await connection.getParsedTokenAccountsByOwner(
             publicKey,
             { programId: TOKEN_PROGRAM_ID }
         );
 
         const balances: TokenBalance[] = [];
-
-        // Build reverse lookup: mint → symbol
         const mintToSymbol: Record<string, string> = {};
         for (const [symbol, mint] of Object.entries(TOKEN_MINTS)) {
             mintToSymbol[mint] = symbol;
@@ -39,12 +36,8 @@ async function getTokenBalances(walletAddress: string): Promise<TokenBalance[]> 
             const mint = parsedInfo.mint;
             const amount = parsedInfo.tokenAmount.uiAmount;
 
-            // Show ALL tokens with non-zero balance
             if (amount > 0) {
-                // Use known symbol or shorten the mint address
                 const symbol = mintToSymbol[mint] || `${mint.slice(0, 4)}...${mint.slice(-4)}`;
-
-                // Only get USD value for known tokens
                 let usdValue = 0;
                 try {
                     if (mintToSymbol[mint]) {
@@ -57,26 +50,20 @@ async function getTokenBalances(walletAddress: string): Promise<TokenBalance[]> 
                             }
                         }
                     }
-                } catch (e) {
-                    usdValue = 0;
-                }
-
+                } catch (e) {}
                 balances.push({ symbol, mint, balance: amount, usdValue });
             }
         }
-
         return balances;
     } catch (error) {
-        console.error("Token balance error:", error);
         return [];
     }
 }
 
 export function registerPortfolioCommands() {
-
     bot.action('portfolio', async (ctx) => {
         const userId = ctx.from!.id;
-        await ctx.answerCbQuery("Loading portfolio...");
+        await ctx.answerCbQuery("Loading multi-chain portfolio...");
         await showPortfolio(ctx, userId);
     });
 
@@ -88,77 +75,81 @@ export function registerPortfolioCommands() {
     async function showPortfolio(ctx: any, userId: number) {
         try {
             const user = await prisma.user.findUnique({
-                where: { telegramId: BigInt(userId) }
+                where: { telegramId: BigInt(userId) },
+                include: { wallets: true }
             });
 
-            if (!user) {
-                return ctx.replyWithMarkdown(
-                    "❌ No wallet found. Generate one first.",
-                    mainKeyboard()
-                );
+            if (!user || user.wallets.length === 0) {
+                return ctx.replyWithMarkdown("❌ No wallets found. Generate one first!", mainKeyboard());
             }
 
-            await ctx.replyWithMarkdown("⏳ *Loading portfolio...*\n\n_Fetching balances & prices_");
+            await ctx.replyWithMarkdown("⏳ *Fetching all wallet balances...*");
 
-            // Get SOL balance
-            const solBalance = await getBalance(new PublicKey(user.publicKey));
+            let totalUsd = 0;
+            let message = `📊 *Multi-Chain Portfolio*\n\n`;
 
-            // Get SOL USD value
-            let solUsdValue = 0;
-            try {
-                const solQuote = await getQuote("SOL", "USDC", solBalance);
-                if (solQuote) {
-                    solUsdValue = parseInt(solQuote.outAmount) / 1e6;
+            const solWallets = user.wallets.filter(w => w.chain === "solana");
+            const evmWallets = user.wallets.filter(w => w.chain === "evm");
+
+            // --- SOLANA SECTION ---
+            if (solWallets.length > 0) {
+                message += `🟣 *Solana Network*\n`;
+                for (const w of solWallets) {
+                    const balance = await getBalance(new PublicKey(w.publicKey));
+                    let usd = 0;
+                    try {
+                        const quote = await getQuote("SOL", "USDC", balance);
+                        if (quote) usd = parseInt(quote.outAmount) / 1e6;
+                    } catch (e) {}
+                    
+                    totalUsd += usd;
+                    message += `   🆔 *${w.name}*\n`;
+                    message += `   💰 ${balance.toFixed(4)} SOL ($${usd.toFixed(2)})\n`;
+                    
+                    // Optional: Get token balances for this specific wallet
+                    const tokens = await getSolanaTokenBalances(w.publicKey);
+                    for (const t of tokens) {
+                        message += `   • ${t.symbol}: ${t.balance.toFixed(2)} ($${t.usdValue.toFixed(2)})\n`;
+                        totalUsd += t.usdValue;
+                    }
+                    message += `\n`;
                 }
-            } catch (e) {}
+            }
 
-            // Get token balances
-            const tokenBalances = await getTokenBalances(user.publicKey);
-
-            // Calculate total USD value
-            const totalUsd = solUsdValue + tokenBalances.reduce((sum, t) => sum + t.usdValue, 0);
-
-            // Build portfolio message
-            let message = `📊 *Portfolio*\n\n`;
-            message += `📍 \`${user.publicKey.slice(0, 8)}...${user.publicKey.slice(-8)}\`\n\n`;
-            message += `💼 *Total Value: $${totalUsd.toFixed(2)} USD*\n\n`;
-            message += `━━━━━━━━━━━━━━━\n\n`;
-
-            // SOL row
-            message += `⚡ *SOL*\n`;
-            message += `   Balance: ${solBalance.toFixed(4)} SOL\n`;
-            message += `   Value: $${solUsdValue.toFixed(2)}\n\n`;
-
-            // Token rows
-            if (tokenBalances.length > 0) {
-                for (const token of tokenBalances) {
-                    message += `🪙 *${token.symbol}*\n`;
-                    message += `   Balance: ${token.balance.toFixed(4)}\n`;
-                    message += `   Value: $${token.usdValue.toFixed(2)}\n\n`;
+            // --- ETHEREUM & BASE SECTION ---
+            if (evmWallets.length > 0) {
+                // ETHEREUM
+                message += `🔹 *Ethereum Network*\n`;
+                for (const w of evmWallets) {
+                    const balance = await getEVMBalance(w.publicKey, "ethereum");
+                    const usd = balance * 2500; // Mock price
+                    totalUsd += usd;
+                    message += `   🆔 *${w.name}*\n`;
+                    message += `   💰 ${balance.toFixed(4)} ETH ($${usd.toFixed(2)})\n\n`;
                 }
-            } else {
-                message += `_No other tokens found_\n\n`;
+
+                // BASE
+                message += `🔵 *Base Network*\n`;
+                for (const w of evmWallets) {
+                    const balance = await getEVMBalance(w.publicKey, "base");
+                    const usd = balance * 2500; // Mock price
+                    totalUsd += usd;
+                    message += `   🆔 *${w.name}*\n`;
+                    message += `   💰 ${balance.toFixed(4)} ETH ($${usd.toFixed(2)})\n\n`;
+                }
             }
 
             message += `━━━━━━━━━━━━━━━\n`;
-            message += `🔄 _Prices via Raydium_`;
+            message += `💰 *Total Estimated Value: $${totalUsd.toFixed(2)} USD*\n`;
+            message += `━━━━━━━━━━━━━━━`;
 
             return ctx.replyWithMarkdown(
                 message,
-                Markup.inlineKeyboard([
-                    [
-                        Markup.button.callback('🔄 Refresh', 'portfolio'),
-                        Markup.button.callback('💸 Send SOL', 'send_sol')
-                    ],
-                    [
-                        Markup.button.callback('🔄 Swap Tokens', 'swap_menu'),
-                        Markup.button.callback('🏠 Menu', 'main_menu')
-                    ]
-                ])
+                mainKeyboard(user.activeChain)
             );
         } catch (error) {
             console.error("Portfolio error:", error);
-            return ctx.reply("❌ Error loading portfolio. Please try again.", mainKeyboard());
+            return ctx.reply("❌ Error loading portfolio.", mainKeyboard());
         }
     }
 }

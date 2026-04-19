@@ -1,14 +1,8 @@
 import { bot } from "../bot";
-import { prisma } from "../services/solana";
 import { getQuote, TOKEN_MINTS, formatTokenAmount } from "../services/jupiter";
 import { mainKeyboard } from "../keyboards";
 import { Markup } from "telegraf";
-import { PrismaPg } from "@prisma/adapter-pg";
-import { PrismaClient } from "@prisma/client";
-
-// Separate prisma instance for alert polling
-const alertAdapter = new PrismaPg({ connectionString: process.env.DATABASE_URL! });
-const alertPrisma = new PrismaClient({ adapter: alertAdapter });
+import { prisma } from "../services/db";
 
 export function registerAlertCommands() {
 
@@ -51,7 +45,7 @@ export function registerAlertCommands() {
         const userId = ctx.from.id;
 
         // Check existing alerts limit
-        const existingAlerts = await alertPrisma.alert.count({
+        const existingAlerts = await prisma.alert.count({
             where: { telegramId: BigInt(userId), triggered: false }
         });
 
@@ -59,7 +53,7 @@ export function registerAlertCommands() {
             return ctx.reply("❌ Maximum 10 active alerts allowed. Delete some with /alerts");
         }
 
-        await alertPrisma.alert.create({
+        await prisma.alert.create({
             data: {
                 telegramId: BigInt(userId),
                 token: tokenUpper!,
@@ -105,7 +99,7 @@ export function registerAlertCommands() {
         const userId = ctx.from!.id;
 
         try {
-            await alertPrisma.alert.deleteMany({
+            await prisma.alert.deleteMany({
                 where: { id: alertId, telegramId: BigInt(userId) }
             });
             await ctx.answerCbQuery("✅ Alert deleted");
@@ -129,7 +123,7 @@ export function registerAlertCommands() {
 
     bot.action('confirm_delete_all_alerts', async (ctx) => {
         const userId = ctx.from!.id;
-        await alertPrisma.alert.deleteMany({
+        await prisma.alert.deleteMany({
             where: { telegramId: BigInt(userId) }
         });
         await ctx.answerCbQuery("✅ All alerts deleted");
@@ -138,7 +132,7 @@ export function registerAlertCommands() {
 }
 
 async function showAlerts(ctx: any, userId: number) {
-    const alerts = await alertPrisma.alert.findMany({
+    const alerts = await prisma.alert.findMany({
         where: { telegramId: BigInt(userId), triggered: false },
         orderBy: { createdAt: 'desc' }
     });
@@ -181,7 +175,7 @@ export async function startAlertChecker(botInstance: any) {
 
     setInterval(async () => {
         try {
-            const activeAlerts = await alertPrisma.alert.findMany({
+            const activeAlerts = await prisma.alert.findMany({
                 where: { triggered: false }
             });
 
@@ -212,7 +206,7 @@ export async function startAlertChecker(botInstance: any) {
 
                 if (triggered) {
                     // Mark as triggered
-                    await alertPrisma.alert.update({
+                    await prisma.alert.update({
                         where: { id: alert.id },
                         data: { triggered: true }
                     });

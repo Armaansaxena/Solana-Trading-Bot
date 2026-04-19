@@ -1,7 +1,9 @@
-import { bot, SESSION, connection } from "../bot";
+import { bot, connection } from "../bot";
+import { prisma } from "../services/db";
 import { getUserKeypair, saveTransaction } from "../services/solana";
 import { mainKeyboard } from "../keyboards";
 import { Markup } from "telegraf";
+import fetch from "node-fetch";
 import {
     Keypair,
     SystemProgram,
@@ -19,6 +21,7 @@ import {
     getMinimumBalanceForRentExemptMint,
 } from "@solana/spl-token";
 import { createCreateMetadataAccountV3Instruction } from "@metaplex-foundation/mpl-token-metadata";
+import { getSession, setSession, clearSession } from "../services/redis";
 
 const TOKEN_METADATA_PROGRAM_ID = new PublicKey(
     "metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s"
@@ -30,7 +33,7 @@ export function registerLaunchCommands() {
         const userId = ctx.from?.id;
         if (!userId) return;
 
-        const session = SESSION[userId];
+        const session = await getSession(userId);
         if (session?.launchStep !== "image") return;
 
         try {
@@ -50,7 +53,7 @@ export function registerLaunchCommands() {
             const { uploadImageToIPFS } = await import("../services/ipfs");
             const imageUrl = await uploadImageToIPFS(imageBuffer, `${session.tokenSymbol}-logo.jpg`);
 
-            SESSION[userId] = { ...session, tokenImageUrl: imageUrl, launchStep: "confirm" };
+            await setSession(userId, { ...session, tokenImageUrl: imageUrl, launchStep: "confirm" });
 
             ctx.replyWithMarkdown(
                 `✅ *Image uploaded to IPFS!*\n\n` +
@@ -72,21 +75,21 @@ export function registerLaunchCommands() {
             );
         } catch (error) {
             console.error("Photo upload error:", error);
-            ctx.reply("❌ Error uploading image. Type /skip to use default image.");
+            ctx.reply("❌ Error uploading image. Pinata API keys might be missing or invalid. Type /skip to use default image.");
         }
     });
 
     bot.command("skip", async (ctx) => {
         const userId = ctx.from.id;
-        const session = SESSION[userId];
+        const session = await getSession(userId);
 
         if (session?.launchStep !== "image") return;
 
-        SESSION[userId] = {
+        await setSession(userId, {
             ...session,
             tokenImageUrl: "https://raw.githubusercontent.com/Armaansaxena/Solana-Trading-Bot/main/token-logo.png",
             launchStep: "confirm"
-        };
+        });
 
         ctx.replyWithMarkdown(
             `✅ *Using default image*\n\n` +
@@ -107,6 +110,20 @@ export function registerLaunchCommands() {
     });
 
     bot.action('launch_menu', async (ctx) => {
+        const userId = ctx.from!.id;
+        const user = await prisma.user.findUnique({ where: { telegramId: BigInt(userId) } });
+        const activeChain = user?.activeChain || "solana";
+
+        if (activeChain !== "solana") {
+            await ctx.answerCbQuery();
+            return ctx.replyWithMarkdown(
+                `🚀 *Token Launch (EVM)*\n\n` +
+                `Token launching for *${activeChain.toUpperCase()}* is coming soon! 🛠️\n\n` +
+                `Currently, you can launch SPL tokens on *Solana*.`,
+                Markup.inlineKeyboard([[Markup.button.callback('🏠 Main Menu', 'main_menu')]])
+            );
+        }
+
         await ctx.answerCbQuery();
         return ctx.replyWithMarkdown(
             `🚀 *Launch a Token*\n\n` +
@@ -128,14 +145,21 @@ export function registerLaunchCommands() {
 
     bot.action('start_launch', async (ctx) => {
         const userId = ctx.from!.id;
+        const user = await prisma.user.findUnique({ where: { telegramId: BigInt(userId) } });
+        const activeChain = user?.activeChain || "solana";
+
+        if (activeChain !== "solana") {
+            return ctx.answerCbQuery("❌ Only available on Solana");
+        }
+
         await ctx.answerCbQuery();
 
         const keypair = await getUserKeypair(userId);
         if (!keypair) {
-            return ctx.reply("❌ No wallet found. Generate one first.", mainKeyboard());
+            return ctx.reply("❌ No wallet found. Generate one first.", mainKeyboard(activeChain));
         }
 
-        SESSION[userId] = { launchStep: "name" };
+        await setSession(userId, { launchStep: "name" });
         return ctx.replyWithMarkdown(
             `🚀 *Token Launch Wizard*\n\n` +
             `*Step 1/5* — Token Name\n\n` +
@@ -147,11 +171,18 @@ export function registerLaunchCommands() {
 
     bot.command('launch', async (ctx) => {
         const userId = ctx.from.id;
+        const user = await prisma.user.findUnique({ where: { telegramId: BigInt(userId) } });
+        const activeChain = user?.activeChain || "solana";
+
+        if (activeChain !== "solana") {
+            return ctx.replyWithMarkdown(`❌ Token launching is currently only supported on *Solana*.`);
+        }
+
         const keypair = await getUserKeypair(userId);
         if (!keypair) {
-            return ctx.reply("❌ No wallet found. Generate one first.", mainKeyboard());
+            return ctx.reply("❌ No wallet found. Generate one first.", mainKeyboard(activeChain));
         }
-        SESSION[userId] = { launchStep: "name" };
+        await setSession(userId, { launchStep: "name" });
         return ctx.replyWithMarkdown(
             `🚀 *Token Launch Wizard*\n\n` +
             `*Step 1/5* — Token Name\n\n` +
@@ -163,7 +194,7 @@ export function registerLaunchCommands() {
 
     bot.action('confirm_launch', async (ctx) => {
         const userId = ctx.from!.id;
-        const session = SESSION[userId];
+        const session = await getSession(userId);
 
         if (!session?.tokenName || !session?.tokenSymbol || !session?.tokenSupply) {
             await ctx.answerCbQuery("❌ Session expired");
@@ -224,7 +255,7 @@ export function registerLaunchCommands() {
                     mintKeypair.publicKey,
                     associatedTokenAccount,
                     keypair.publicKey,
-                    session.tokenSupply! * Math.pow(10, 9)
+                    BigInt(session.tokenSupply!) * BigInt(Math.pow(10, 9))
                 ),
             );
 
@@ -287,7 +318,7 @@ export function registerLaunchCommands() {
                 session.tokenName!, session.tokenSymbol!
             );
 
-            SESSION[userId] = {};
+            await clearSession(userId);
 
             const mintAddress = mintKeypair.publicKey.toBase58();
 
@@ -298,16 +329,16 @@ export function registerLaunchCommands() {
                 `💰 *Supply:* ${session.tokenSupply!.toLocaleString('en-US')}\n` +
                 `📝 *Description:* ${session.tokenDescription || "N/A"}\n\n` +
                 `🔑 *Token CA:*\n\`${mintAddress}\`\n\n` +
-                `🔗 [View on Solscan](https://solscan.io/token/${mintAddress}?cluster=devnet)\n` +
-                `🔗 [View Transaction](https://solscan.io/tx/${signature}?cluster=devnet)\n\n` +
-                `✅ _Token deployed on Solana Devnet_`,
+                `🔗 [View on Solscan](https://solscan.io/token/${mintAddress})\n` +
+                `🔗 [View Transaction](https://solscan.io/tx/${signature})\n\n` +
+                `✅ _Token deployed on Solana Network_`,
                 Markup.inlineKeyboard([
-                    [Markup.button.url("🌐 View Token", `https://solscan.io/token/${mintAddress}?cluster=devnet`)],
+                    [Markup.button.url("🌐 View Token", `https://solscan.io/token/${mintAddress}`)],
                     [Markup.button.callback("📊 Portfolio", "portfolio"), Markup.button.callback("🏠 Menu", "main_menu")]
                 ])
             );
         } catch (error: any) {
-            SESSION[userId] = {};
+            await clearSession(userId);
             console.error("Token launch error:", error);
             return ctx.replyWithMarkdown(
                 `❌ *Token Launch Failed*\n\n${error.message || "Unknown error"}`,
@@ -318,22 +349,22 @@ export function registerLaunchCommands() {
 
     bot.action('cancel_launch', async (ctx) => {
         const userId = ctx.from!.id;
-        SESSION[userId] = {};
+        await clearSession(userId);
         await ctx.answerCbQuery("Cancelled");
         return ctx.replyWithMarkdown("❌ *Token launch cancelled.*", mainKeyboard());
     });
 }
 
-export function handleLaunchText(userId: number, text: string, session: any, ctx: any): boolean {
+export async function handleLaunchText(userId: number, text: string, session: any, ctx: any): Promise<boolean> {
     if (!session?.launchStep) return false;
 
     if (session.launchStep === "name") {
         if (text.length < 2 || text.length > 32) {
-            ctx.reply("❌ Name must be 2-32 characters. Try again:");
+            await ctx.reply("❌ Name must be 2-32 characters. Try again:");
             return true;
         }
-        SESSION[userId] = { ...session, tokenName: text, launchStep: "symbol" };
-        ctx.replyWithMarkdown(
+        await setSession(userId, { ...session, tokenName: text, launchStep: "symbol" });
+        await ctx.replyWithMarkdown(
             `✅ Name: *${text}*\n\n` +
             `*Step 2/5* — Token Symbol\n\n` +
             `Enter a short symbol (2-10 chars)\n\n` +
@@ -346,11 +377,11 @@ export function handleLaunchText(userId: number, text: string, session: any, ctx
     if (session.launchStep === "symbol") {
         const symbol = text.toUpperCase().trim();
         if (symbol.length < 2 || symbol.length > 10) {
-            ctx.reply("❌ Symbol must be 2-10 characters. Try again:");
+            await ctx.reply("❌ Symbol must be 2-10 characters. Try again:");
             return true;
         }
-        SESSION[userId] = { ...session, tokenSymbol: symbol, launchStep: "supply" };
-        ctx.replyWithMarkdown(
+        await setSession(userId, { ...session, tokenSymbol: symbol, launchStep: "supply" });
+        await ctx.replyWithMarkdown(
             `✅ Symbol: *${symbol}*\n\n` +
             `*Step 3/5* — Total Supply\n\n` +
             `How many tokens to mint?\n\n` +
@@ -363,11 +394,11 @@ export function handleLaunchText(userId: number, text: string, session: any, ctx
     if (session.launchStep === "supply") {
         const supply = parseInt(text.replace(/,/g, ""));
         if (isNaN(supply) || supply <= 0 || supply > 1_000_000_000_000) {
-            ctx.reply("❌ Invalid supply. Enter a number between 1 and 1 trillion:");
+            await ctx.reply("❌ Invalid supply. Enter a number between 1 and 1 trillion:");
             return true;
         }
-        SESSION[userId] = { ...session, tokenSupply: supply, launchStep: "description" };
-        ctx.replyWithMarkdown(
+        await setSession(userId, { ...session, tokenSupply: supply, launchStep: "description" });
+        await ctx.replyWithMarkdown(
             `✅ Supply: *${supply.toLocaleString('en-US')}*\n\n` +
             `*Step 4/5* — Description\n\n` +
             `Describe your token in a few words\n\n` +
@@ -378,8 +409,8 @@ export function handleLaunchText(userId: number, text: string, session: any, ctx
     }
 
     if (session.launchStep === "description") {
-        SESSION[userId] = { ...session, tokenDescription: text, launchStep: "image" };
-        ctx.replyWithMarkdown(
+        await setSession(userId, { ...session, tokenDescription: text, launchStep: "image" });
+        await ctx.replyWithMarkdown(
             `✅ Description: *${text}*\n\n` +
             `*Step 5/5* — Token Image\n\n` +
             `Send a photo for your token logo\n\n` +

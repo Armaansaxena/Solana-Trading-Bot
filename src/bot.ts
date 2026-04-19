@@ -2,7 +2,7 @@ import * as dotenv from "dotenv";
 dotenv.config({ override: true });
 
 import { Telegraf } from "telegraf";
-import { Connection } from "@solana/web3.js";
+import { connection } from "./services/rpc";
 import type { SessionData } from "./types/index";
 
 console.log("🔑 BOT_TOKEN exists:", !!process.env.BOT_TOKEN);
@@ -15,10 +15,4 @@ if (!BOT_TOKEN) throw new Error("BOT_TOKEN is not defined");
 
 export const bot = new Telegraf(BOT_TOKEN);
 
-export const connection = new Connection(
-    process.env.RPC_URL || "https://api.mainnet-beta.solana.com",
-    "confirmed"
-);
-
-// Keep SESSION as fallback for compatibility during migration
-export const SESSION: Record<number, SessionData> = {};
+export { connection };

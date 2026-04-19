@@ -1,28 +1,31 @@
-import { bot, SESSION } from "../bot";
-import { getUserKeypair, getBalance, prisma } from "../services/solana";
+import { bot } from "../bot";
+import { getUserKeypair, getBalance } from "../services/solana";
+import { getEVMBalance } from "../services/evm";
+import { prisma } from "../services/db";
 import { getQuote, TOKEN_MINTS, formatTokenAmount } from "../services/jupiter";
 import { mainKeyboard } from "../keyboards";
 import { Markup } from "telegraf";
 import { PublicKey } from "@solana/web3.js";
 import Groq from "groq-sdk";
+import { getSession, setSession, clearSession } from "../services/redis";
 
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 
-const SYSTEM_PROMPT = `You are SolBot AI, an intelligent Solana trading assistant inside a Telegram bot.
+const SYSTEM_PROMPT = `You are ArmEthSol AI, a multi-chain trading assistant for Solana, Ethereum, and Base.
 
 Your job is to understand what the user wants to do and respond with a JSON action.
 
 Available actions:
-- check_balance: Check SOL balance
-- check_portfolio: Show full portfolio
+- check_balance: Check balance of current active chain
+- check_portfolio: Show full multi-chain portfolio
 - swap_tokens: Swap tokens (needs: fromToken, toToken, amount)
 - get_price: Get token price (needs: token)
-- send_sol: Send SOL (needs: amount, optional: address)
+- send_token: Send native token (needs: amount, optional: address)
 - launch_token: Launch a new token
 - help: Show help
 - unknown: Cannot understand the request
 
-Supported tokens: SOL, USDC, USDT, BONK, JUP, WIF
+Supported tokens: SOL, ETH, USDC, USDT, BONK, JUP, WIF
 
 ALWAYS respond with valid JSON only. No text, no explanation, just JSON.
 
@@ -33,7 +36,8 @@ Format:
     "fromToken": "SOL",
     "toToken": "USDC", 
     "amount": 1.5,
-    "token": "SOL"
+    "token": "SOL",
+    "address": "0x... or SolanaAddress"
   },
   "message": "Human readable confirmation of what you understood"
 }
@@ -42,23 +46,11 @@ Examples:
 User: "swap 2 sol to usdc"
 {"action":"swap_tokens","params":{"fromToken":"SOL","toToken":"USDC","amount":2},"message":"Swapping 2 SOL to USDC"}
 
-User: "whats my balance"
-{"action":"check_balance","params":{},"message":"Checking your SOL balance"}
+User: "send 0.1 eth to 0x123..."
+{"action":"send_token","params":{"amount":0.1, "address":"0x123..."},"message":"Sending 0.1 ETH to 0x123..."}
 
-User: "buy $50 worth of bonk"
-{"action":"swap_tokens","params":{"fromToken":"USDC","toToken":"BONK","amount":50},"message":"Buying $50 worth of BONK using USDC"}
-
-User: "how much is sol worth"
-{"action":"get_price","params":{"token":"SOL"},"message":"Getting current SOL price"}
-
-User: "send 0.5 sol"
-{"action":"send_sol","params":{"amount":0.5},"message":"Initiating send of 0.5 SOL"}
-
-User: "launch a token"
-{"action":"launch_token","params":{},"message":"Starting token launch wizard"}
-
-User: "portfolio"
-{"action":"check_portfolio","params":{},"message":"Loading your portfolio"}`;
+User: "whats my eth balance"
+{"action":"check_balance","params":{},"message":"Checking your balance"}`;
 
 async function parseUserIntent(userMessage: string): Promise<{
     action: string;
@@ -93,39 +85,44 @@ export function registerAICommands() {
 
     bot.command('ai', async (ctx) => {
         const text = ctx.message.text.replace('/ai', '').trim();
+        const userId = ctx.from!.id;
+        const user = await prisma.user.findUnique({ where: { telegramId: BigInt(userId) } });
+        const activeChain = user?.activeChain || "solana";
 
         if (!text) {
             return ctx.replyWithMarkdown(
-                `🤖 *SolBot AI*\n\n` +
+                `🤖 *AI Assistant (${activeChain.toUpperCase()})*\n\n` +
                 `Talk to your wallet in plain English!\n\n` +
                 `*Examples:*\n` +
                 `• \`/ai swap 2 SOL to USDC\`\n` +
                 `• \`/ai what's my balance\`\n` +
                 `• \`/ai buy $50 of BONK\`\n` +
                 `• \`/ai show my portfolio\`\n` +
-                `• \`/ai get SOL price\`\n` +
-                `• \`/ai launch a token\`\n\n` +
-                `_Or just type naturally after /ai_`,
+                `• \`/ai get SOL price\`\n\n` +
+                `_Your active chain is currently ${activeChain.toUpperCase()}_`,
                 Markup.inlineKeyboard([
                     [Markup.button.callback('🏠 Main Menu', 'main_menu')]
                 ])
             );
         }
 
-        await handleAIMessage(ctx, ctx.from.id, text);
+        await handleAIMessage(ctx, userId, text);
     });
 
     bot.action('ai_menu', async (ctx) => {
+        const userId = ctx.from!.id;
+        const user = await prisma.user.findUnique({ where: { telegramId: BigInt(userId) } });
+        const activeChain = user?.activeChain || "solana";
+
         await ctx.answerCbQuery();
         return ctx.replyWithMarkdown(
-            `🤖 *SolBot AI Assistant*\n\n` +
+            `🤖 *AI Assistant (${activeChain.toUpperCase()})*\n\n` +
             `Talk to your wallet in plain English!\n\n` +
             `*Try these:*\n` +
             `• \`/ai swap 1 SOL to USDC\`\n` +
             `• \`/ai check my balance\`\n` +
             `• \`/ai buy $20 of BONK\`\n` +
-            `• \`/ai show portfolio\`\n` +
-            `• \`/ai SOL price\`\n\n` +
+            `• \`/ai show portfolio\`\n\n` +
             `_Type /ai followed by your request_`,
             Markup.inlineKeyboard([
                 [Markup.button.callback('🏠 Main Menu', 'main_menu')]
@@ -137,17 +134,21 @@ export function registerAICommands() {
 async function handleAIMessage(ctx: any, userId: number, text: string) {
     try {
         const user = await prisma.user.findUnique({
-            where: { telegramId: BigInt(userId) }
+            where: { telegramId: BigInt(userId) },
+            include: { activeWallet: true }
         });
 
-        if (!user) {
+        if (!user || !user.activeWallet) {
             return ctx.replyWithMarkdown(
-                "❌ No wallet found. Generate one first with /start",
+                "❌ No active wallet found. Generate one first with /start",
                 mainKeyboard()
             );
         }
 
-        await ctx.replyWithMarkdown(`🤖 _Thinking..._`);
+        const activeChain = user.activeChain || "solana";
+        const assetSymbol = (activeChain === "ethereum" || activeChain === "base") ? "ETH" : "SOL";
+
+        await ctx.replyWithMarkdown(`🤖 _Thinking (${activeChain.toUpperCase()})..._`);
 
         const intent = await parseUserIntent(text);
 
@@ -162,18 +163,18 @@ async function handleAIMessage(ctx: any, userId: number, text: string) {
 
         switch (intent.action) {
             case "check_balance": {
-                const balance = await getBalance(new PublicKey(user.publicKey));
-                let usdValue = 0;
-                try {
-                    const quote = await getQuote("SOL", "USDC", balance);
-                    if (quote) usdValue = parseInt(quote.outAmount) / 1e6;
-                } catch (e) {}
+                let balance = 0;
+                if (activeChain === "solana") {
+                    balance = await getBalance(new PublicKey(user.activeWallet.publicKey));
+                } else {
+                    balance = await getEVMBalance(user.activeWallet.publicKey, activeChain as any);
+                }
 
                 return ctx.replyWithMarkdown(
                     `🤖 *${intent.message}*\n\n` +
-                    `💰 Balance: ${balance.toFixed(4)} SOL\n` +
-                    `💵 Value: $${usdValue.toFixed(2)} USD`,
-                    mainKeyboard()
+                    `💰 Balance: ${balance.toFixed(4)} ${assetSymbol}\n` +
+                    `🌐 Chain: ${activeChain.toUpperCase()}`,
+                    mainKeyboard(activeChain)
                 );
             }
 
@@ -188,6 +189,10 @@ async function handleAIMessage(ctx: any, userId: number, text: string) {
 
             case "get_price": {
                 const token = intent.params.token?.toUpperCase();
+                if (activeChain !== "solana") {
+                    return ctx.reply(`🤖 Price lookups for ${activeChain.toUpperCase()} are coming soon!`);
+                }
+
                 if (!token || !TOKEN_MINTS[token]) {
                     return ctx.reply(`🤖 Unknown token: ${token}`);
                 }
@@ -199,23 +204,26 @@ async function handleAIMessage(ctx: any, userId: number, text: string) {
                 return ctx.replyWithMarkdown(
                     `🤖 *${intent.message}*\n\n` +
                     `💰 1 ${token} = $${price} USDC`,
-                    mainKeyboard()
+                    mainKeyboard(activeChain)
                 );
             }
 
             case "swap_tokens": {
+                if (activeChain !== "solana") {
+                    return ctx.reply(`🤖 Token swapping on ${activeChain.toUpperCase()} is coming soon!`);
+                }
+
                 const { fromToken, toToken, amount } = intent.params;
                 if (!fromToken || !toToken || !amount) {
                     return ctx.reply("🤖 Please specify: from token, to token, and amount.");
                 }
 
-                // Trigger swap flow
-                SESSION[userId] = {
+                await setSession(userId, {
                     waitingForSwapAmount: true,
                     swapFromToken: fromToken.toUpperCase(),
                     swapToToken: toToken.toUpperCase(),
                     sendAmount: amount
-                };
+                });
 
                 const quote = await getQuote(fromToken, toToken, amount);
                 if (!quote) return ctx.reply("🤖 Could not get swap quote.");
@@ -226,8 +234,7 @@ async function handleAIMessage(ctx: any, userId: number, text: string) {
                     `🤖 *${intent.message}*\n\n` +
                     `🔄 *Swap Preview*\n` +
                     `📤 You pay: \`${amount} ${fromToken.toUpperCase()}\`\n` +
-                    `📥 You get: \`${outAmount} ${toToken.toUpperCase()}\`\n` +
-                    `📊 Price impact: ${parseFloat(quote.priceImpactPct).toFixed(3)}%\n\n` +
+                    `📥 You get: \`${outAmount} ${toToken.toUpperCase()}\`\n\n` +
                     `_Confirm to execute_`,
                     Markup.inlineKeyboard([
                         [
@@ -238,30 +245,66 @@ async function handleAIMessage(ctx: any, userId: number, text: string) {
                 );
             }
 
+            case "send_token":
             case "send_sol": {
-                const { amount } = intent.params;
-                SESSION[userId] = { waitingForAmount: true };
+                const { amount, address } = intent.params;
 
-                if (amount) {
-                    const balance = await getBalance(new PublicKey(user.publicKey));
-                    SESSION[userId] = { waitingForAddress: true, sendAmount: amount };
+                // Case 1: Both provided - direct confirmation
+                if (amount && address) {
+                    await setSession(userId, { 
+                        waitingForAddress: true, 
+                        sendAmount: amount,
+                        receiverAddress: address
+                    });
+                    
                     return ctx.replyWithMarkdown(
                         `🤖 *${intent.message}*\n\n` +
-                        `💰 Sending: ${amount} SOL\n\n` +
-                        `📨 Enter the *recipient address*:\n\n` +
+                        `🔄 *Transaction Review*\n` +
+                        `📤 Sending: \`${amount} ${assetSymbol}\`\n` +
+                        `📥 To: \`${address}\`\n` +
+                        `🌐 Network: ${activeChain.toUpperCase()}\n\n` +
+                        `_Click below to execute:_`,
+                        Markup.inlineKeyboard([
+                            [Markup.button.callback('🚀 Execute Transaction', 'confirm_ai_send')],
+                            [Markup.button.callback('❌ Cancel', 'cancel_swap')]
+                        ])
+                    );
+                }
+
+                // Case 2: Only address provided - ask for amount
+                if (address && !amount) {
+                    await setSession(userId, { waitingForAmount: true, receiverAddress: address });
+                    return ctx.replyWithMarkdown(
+                        `🤖 I've got the address: \`${address}\`\n\n` +
+                        `*How much ${assetSymbol}* do you want to send?\n\n` +
                         `_Type /cancel to abort_`
                     );
                 }
 
+                // Case 3: Only amount provided - ask for address
+                if (amount && !address) {
+                    await setSession(userId, { waitingForAddress: true, sendAmount: amount });
+                    return ctx.replyWithMarkdown(
+                        `🤖 Okay, sending \`${amount} ${assetSymbol}\`.\n\n` +
+                        `*What is the recipient address?*\n\n` +
+                        `_Type /cancel to abort_`
+                    );
+                }
+
+                // Case 4: Neither provided
+                await setSession(userId, { waitingForAmount: true });
                 return ctx.replyWithMarkdown(
                     `🤖 *${intent.message}*\n\n` +
-                    `How much SOL do you want to send?\n\n` +
+                    `How much ${assetSymbol} do you want to send?\n\n` +
                     `_Type /cancel to abort_`
                 );
             }
 
             case "launch_token": {
-                SESSION[userId] = { launchStep: "name" };
+                if (activeChain !== "solana") {
+                    return ctx.reply(`🤖 Token launching on ${activeChain.toUpperCase()} is coming soon!`);
+                }
+                await setSession(userId, { launchStep: "name" });
                 return ctx.replyWithMarkdown(
                     `🤖 *${intent.message}*\n\n` +
                     `🚀 *Token Launch Wizard*\n\n` +
@@ -273,24 +316,22 @@ async function handleAIMessage(ctx: any, userId: number, text: string) {
 
             case "help": {
                 return ctx.replyWithMarkdown(
-                    `🤖 *SolBot AI Help*\n\n` +
-                    `I can help you:\n` +
-                    `• Check balance & portfolio\n` +
-                    `• Swap tokens\n` +
-                    `• Get token prices\n` +
-                    `• Send SOL\n` +
-                    `• Launch tokens\n\n` +
+                    `🤖 *ArmEthSol AI Help*\n\n` +
+                    `I am chain-aware! I currently support:\n` +
+                    `• Balance check (${activeChain.toUpperCase()})\n` +
+                    `• Multi-chain portfolio\n` +
+                    `• Sending native tokens\n` +
+                    `• Solana Swaps & Launching\n\n` +
                     `Just type \`/ai\` followed by what you want!`,
-                    mainKeyboard()
+                    mainKeyboard(activeChain)
                 );
             }
 
             default: {
                 return ctx.replyWithMarkdown(
                     `🤖 I understood: _"${intent.message}"_\n\n` +
-                    `But I'm not sure how to help with that yet.\n\n` +
-                    `Try: swap, balance, portfolio, price, send, or launch`,
-                    mainKeyboard()
+                    `But I'm not sure how to help with that on ${activeChain.toUpperCase()} yet.`,
+                    mainKeyboard(activeChain)
                 );
             }
         }

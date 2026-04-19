@@ -2,10 +2,14 @@ import pinataSDK from "@pinata/sdk";
 import * as dotenv from "dotenv";
 dotenv.config({ override: true });
 
-const pinata = new pinataSDK(
-    process.env.PINATA_API_KEY!,
-    process.env.PINATA_SECRET_KEY!
-);
+const apiKey = process.env.PINATA_API_KEY;
+const secretKey = process.env.PINATA_SECRET_KEY;
+
+if (!apiKey || !secretKey) {
+    console.warn("⚠️ PINATA_API_KEY or PINATA_SECRET_KEY is missing from .env. IPFS uploads will fail.");
+}
+
+const pinata = new pinataSDK(apiKey || "", secretKey || "");
 
 export async function uploadImageToIPFS(
     imageBuffer: Buffer,

@@ -1,12 +1,7 @@
 import { bot } from "../bot";
-import { prisma } from "../services/solana";
 import { mainKeyboard } from "../keyboards";
 import { Markup } from "telegraf";
-import { PrismaPg } from "@prisma/adapter-pg";
-import { PrismaClient } from "@prisma/client";
-
-const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL! });
-const referralPrisma = new PrismaClient({ adapter });
+import { prisma } from "../services/db";
 
 export function registerReferralCommands() {
 
@@ -21,12 +16,12 @@ export function registerReferralCommands() {
             if (referrerId && referrerId !== userId) {
                 try {
                     // Check if user already referred
-                    const existing = await referralPrisma.referral.findUnique({
+                    const existing = await prisma.referral.findUnique({
                         where: { referredId: BigInt(userId) }
                     });
 
                     if (!existing) {
-                        await referralPrisma.referral.create({
+                        await prisma.referral.create({
                             data: {
                                 referrerId: BigInt(referrerId),
                                 referredId: BigInt(userId),
@@ -64,19 +59,19 @@ export function registerReferralCommands() {
 async function showReferralStats(ctx: any, userId: number) {
     try {
         // Get referral count
-        const referralCount = await referralPrisma.referral.count({
+        const referralCount = await prisma.referral.count({
             where: { referrerId: BigInt(userId) }
         });
 
         // Get recent referrals
-        const recentReferrals = await referralPrisma.referral.findMany({
+        const recentReferrals = await prisma.referral.findMany({
             where: { referrerId: BigInt(userId) },
             orderBy: { createdAt: 'desc' },
             take: 5,
         });
 
         // Check if user was referred by someone
-        const wasReferred = await referralPrisma.referral.findUnique({
+        const wasReferred = await prisma.referral.findUnique({
             where: { referredId: BigInt(userId) }
         });
 

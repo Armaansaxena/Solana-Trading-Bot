@@ -2,11 +2,7 @@ import { bot } from "../bot";
 import { getQuote, TOKEN_MINTS, formatTokenAmount } from "../services/jupiter";
 import { mainKeyboard } from "../keyboards";
 import { Markup } from "telegraf";
-import { PrismaPg } from "@prisma/adapter-pg";
-import { PrismaClient } from "@prisma/client";
-
-const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL! });
-const watchlistPrisma = new PrismaClient({ adapter });
+import { prisma } from "../services/db";
 
 export function registerWatchlistCommands() {
 
@@ -34,7 +30,7 @@ export function registerWatchlistCommands() {
         const userId = ctx.from.id;
 
         try {
-            await watchlistPrisma.watchlist.create({
+            await prisma.watchlist.create({
                 data: {
                     telegramId: BigInt(userId),
                     token,
@@ -82,7 +78,7 @@ export function registerWatchlistCommands() {
         const userId = ctx.from!.id;
 
         try {
-            await watchlistPrisma.watchlist.deleteMany({
+            await prisma.watchlist.deleteMany({
                 where: { telegramId: BigInt(userId), token }
             });
             await ctx.answerCbQuery(`✅ ${token} removed`);
@@ -94,7 +90,7 @@ export function registerWatchlistCommands() {
 }
 
 async function showWatchlist(ctx: any, userId: number) {
-    const items = await watchlistPrisma.watchlist.findMany({
+    const items = await prisma.watchlist.findMany({
         where: { telegramId: BigInt(userId) },
         orderBy: { createdAt: 'asc' }
     });
