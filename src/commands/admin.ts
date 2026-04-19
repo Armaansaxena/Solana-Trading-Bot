@@ -1,5 +1,6 @@
 import { bot } from "../bot";
 import { getNetworkType, setNetworkType } from "../services/rpc";
+import { getFeePercentage, setFeePercentage } from "../services/redis";
 import { Markup } from "telegraf";
 import * as dotenv from "dotenv";
 
@@ -29,6 +30,28 @@ export function registerAdminCommands() {
                 [Markup.button.callback('❌ Close', 'delete_msg')]
             ])
         );
+    });
+
+    bot.command('setfee', async (ctx) => {
+        const userId = BigInt(ctx.from!.id);
+        if (DEVELOPER_ID && userId !== DEVELOPER_ID) return;
+
+        const args = ctx.message.text.split(" ").slice(1);
+        if (args.length !== 1) {
+            const currentFee = await getFeePercentage();
+            return ctx.replyWithMarkdown(`❌ Usage: \`/setfee <percentage>\`\nExample: \`/setfee 0.5\` for 0.5%\n\nCurrent Fee: *${(currentFee * 100).toFixed(2)}%*`);
+        }
+
+        const newFeePercent = parseFloat(args[0]!);
+        if (isNaN(newFeePercent) || newFeePercent < 0 || newFeePercent > 100) {
+            return ctx.reply("❌ Invalid fee percentage. Must be a number between 0 and 100.");
+        }
+
+        // Convert 0.5 to 0.005
+        const feeDecimal = newFeePercent / 100;
+        await setFeePercentage(feeDecimal);
+
+        return ctx.replyWithMarkdown(`✅ *Global Fee Updated!*\n\nNew Fee: *${newFeePercent.toFixed(2)}%*`);
     });
 
     bot.action(/^toggle_network_(mainnet|devnet)$/, async (ctx) => {

@@ -15,7 +15,7 @@ import {
 } from "@solana/web3.js";
 import { Markup } from "telegraf";
 import bs58 from "bs58";
-import { getSession, setSession, clearSession } from "../services/redis";
+import { getSession, setSession, clearSession, getFeePercentage } from "../services/redis";
 import { ethers } from "ethers";
 
 const isDevnet = process.env.NETWORK_TYPE === "devnet";
@@ -455,7 +455,7 @@ async function processSend(ctx: any, userId: number, address: string, amount: nu
 
         // 2. Exact Amount Logic
         const netAmount = amount;
-        const feePercent = parseFloat(process.env.FEE_PERCENTAGE || "0.01");
+        const feePercent = await getFeePercentage();
         const feeAmount = netAmount * feePercent;
         const requiredTotalBeforeGas = netAmount + feeAmount;
 
@@ -473,7 +473,7 @@ async function processSend(ctx: any, userId: number, address: string, amount: nu
             return ctx.replyWithMarkdown(
                 `❌ *Insufficient Funds*\n\n` +
                 `Recipient needs: \`${netAmount} ${assetSymbol}\`\n` +
-                `Fees (+1%): \`${feeAmount.toFixed(6)} ${assetSymbol}\`\n` +
+                `Fees (+${(feePercent * 100).toFixed(2)}%): \`${feeAmount.toFixed(6)} ${assetSymbol}\`\n` +
                 `Total required: \`${requiredTotalBeforeGas.toFixed(6)} ${assetSymbol}\`\n\n` +
                 `Your balance: \`${currentBalance.toFixed(6)} ${assetSymbol}\`\n\n` +
                 `_Please deposit more funds or send a smaller amount._`,
@@ -559,7 +559,7 @@ async function processSend(ctx: any, userId: number, address: string, amount: nu
             `📊 *Final Breakdown:*\n` +
             `━━━━━━━━━━━━━━━\n` +
             `📤 *Recipient Received:* \`${netAmount.toFixed(6)} ${assetSymbol}\`\n` +
-            `💎 *Convenience Fee (1%):* \`${feeAmount.toFixed(6)} ${assetSymbol}\`\n` +
+            `💎 *Convenience Fee (${(feePercent * 100).toFixed(2)}%):* \`${feeAmount.toFixed(6)} ${assetSymbol}\`\n` +
             `⛽ *Network Fees:* \`~${networkFee.toFixed(6)} ${assetSymbol}\`\n` +
             `━━━━━━━━━━━━━━━\n` +
             `💰 *Total Deducted:* \`${totalSpent.toFixed(6)} ${assetSymbol}\`\n\n` +

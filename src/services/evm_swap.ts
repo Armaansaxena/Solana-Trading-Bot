@@ -1,5 +1,6 @@
 import { ethers } from "ethers";
 import { getEVMProvider } from "./rpc";
+import { getFeePercentage } from "./redis";
 
 // 1inch API Base URL (Standard for public use, though private keys are better for production)
 const ONENETWORK_API_BASE = "https://api.1inch.dev/swap/v6.0";
@@ -49,8 +50,8 @@ export async function getEVMQuote(
         const decimals = fromSymbol === "ETH" ? 18 : 6; // Basic assumption, should fetch from contract
         const amountInWei = ethers.parseUnits(amount.toString(), decimals);
 
-        // Smart Fee Logic: 1%
-        const feePercent = parseFloat(process.env.FEE_PERCENTAGE || "0.01");
+        // Smart Fee Logic: Dynamic
+        const feePercent = await getFeePercentage();
         const feeBps = feePercent * 10000;
         
         // Construct 1inch Swap URL
