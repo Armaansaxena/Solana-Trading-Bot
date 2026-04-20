@@ -1,4 +1,4 @@
-import { getSolanaConnection } from "./rpc";
+import { getSolanaConnection, getNetworkType } from "./rpc";
 import { Keypair, VersionedTransaction, PublicKey, Transaction, SystemProgram, LAMPORTS_PER_SOL } from "@solana/web3.js";
 import * as dotenv from "dotenv";
 
@@ -32,16 +32,9 @@ export async function getQuote(
     amount: number
 ): Promise<QuoteResult | null> {
     try {
-        if (isLocal) {
-            console.log("🛠️ Using Local Simulation Quote");
-            return {
-                outAmount: (amount * 150 * 1e6).toString(), // Mock $150 SOL price
-                priceImpactPct: "0.1",
-                raw: { simulated: true, amount },
-                isSimulated: true
-            };
-        }
-
+        const network = await getNetworkType();
+        
+        // Always try to fetch REAL prices from Mainnet Raydium API for accuracy
         const fromMint = TOKEN_MINTS[fromSymbol.toUpperCase()] || fromSymbol;
         const toMint = TOKEN_MINTS[toSymbol.toUpperCase()] || toSymbol;
         
@@ -56,15 +49,42 @@ export async function getQuote(
             txVersion: "V0"
         });
 
-        const response = await fetch(`${RAYDIUM_QUOTE_API}?${params}`);
-        const data = await response.json() as any;
+        let outAmount = "0";
+        let priceImpactPct = "0";
+        let raw = null;
+        let isSimulated = isLocal || network === "devnet";
 
-        if (!data.success) return null;
+        try {
+            const response = await fetch(`${RAYDIUM_QUOTE_API}?${params}`);
+            const data = await response.json() as any;
+
+            if (data.success) {
+                outAmount = data.data.outputAmount;
+                priceImpactPct = data.data.priceImpactPct?.toString() || "0";
+                raw = data.data;
+            } else if (isSimulated) {
+                // Fallback for simulation if API fails or token not on Raydium
+                outAmount = (amount * 150 * 1e6).toString(); // Mock $150 SOL price
+                priceImpactPct = "0.1";
+                raw = { simulated: true, amount };
+            } else {
+                return null; // Real trade but API failed
+            }
+        } catch (e) {
+            if (isSimulated) {
+                outAmount = (amount * 150 * 1e6).toString();
+                priceImpactPct = "0.1";
+                raw = { simulated: true, amount };
+            } else {
+                throw e;
+            }
+        }
 
         return {
-            outAmount: data.data.outputAmount,
-            priceImpactPct: data.data.priceImpactPct?.toString() || "0",
-            raw: data.data
+            outAmount,
+            priceImpactPct,
+            raw,
+            isSimulated
         };
     } catch (error) {
         console.error("Raydium getQuote error:", error);
@@ -83,9 +103,10 @@ export async function executeSwap(
         if (!quote) return null;
 
         const connection = await getSolanaConnection();
+        const network = await getNetworkType();
 
-        if (isLocal || quote.isSimulated) {
-            console.log("🛠️ Executing Simulated Swap (Localnet)");
+        if (isLocal || quote.isSimulated || network === "devnet") {
+            console.log(`🛠️ Executing Simulated Swap (${network.toUpperCase()})`);
             // Send SOL to treasury to simulate a trade
             const tx = new Transaction().add(
                 SystemProgram.transfer({

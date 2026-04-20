@@ -26,15 +26,20 @@
 
 ---
 
-## ⚠️ Alpha Notice
-SolBot V3 is currently in **Alpha**. While Solana trading and core wallet management are production-ready, EVM support (Ethereum/Base) and advanced AI strategies are under active development and should be used with caution in devnet environments first.
+## ⚠️ Alpha & Legal Notice
+SolBot V3 is currently in **Alpha**. For legal and compliance testing, the bot is configured to operate in **Simulation Mode** on all Devnet/Testnet environments. 
+
+### Testing Swaps on Devnet
+Because decentralized exchanges (DEXs) like Raydium and Jupiter do not have active liquidity pools on Solana Devnet, the bot uses a **Functional Simulation**:
+*   **Solana Devnet:** Executing a swap will generate a mock price quote and perform a real transaction on the Solana Devnet (transferring a nominal 1000 lamports to the treasury) to verify the wallet's signing and transmission capabilities.
+*   **Ethereum/Base Sepolia:** Executing a swap will perform a test transaction on the Sepolia network. You will need **Sepolia ETH** from a faucet to test this.
 
 ---
 
 ## ⚡ Key Highlights (V3)
 
 * 🌐 **Multi-Chain Core**: Native architecture for **Solana**, **Ethereum**, and **Base**.
-* 🤖 **Automated Token Swaps**: Integrated with **Jupiter** (Solana) and early-stage **SushiSwap** (EVM).
+* 🤖 **Automated Token Swaps**: Integrated with **Jupiter** (Solana) and **SushiSwap** (EVM) with simulation support for devnets.
 * 📡 **Adaptive RPC Engine**: Real-time latency tracking and automatic failover to the fastest available RPC node.
 * 🔐 **Enterprise-Grade Security**: AES-256-CBC encrypted key management with unique IVs per wallet.
 * 🧠 **AI Assistant**: Natural language processing powered by **Groq (LLaMA 3.3 70B)** for trading and portfolio insights.
