@@ -1,18 +1,20 @@
 # Stage 1: Build
-FROM node:20 AS builder
+FROM node:22 AS builder
 WORKDIR /app
 
-# Install OpenSSL 3.0
+# Install dependencies for Prisma
 RUN apt-get update && apt-get install -y openssl libssl-dev ca-certificates
 
 # Copy package files
 COPY package.json ./
-# Use NPM to ensure all Prisma engine components are downloaded
-RUN npm install
 
+# CRITICAL: Copy prisma folder BEFORE npm install to satisfy postinstall scripts
 COPY prisma ./prisma/
 
-# Force Prisma to use the Library engine (Standard Node-API)
+# Install dependencies (Node 22 satisfies the @prisma/streams-local requirement)
+RUN npm install
+
+# Force Prisma to use the Library engine
 ENV PRISMA_CLIENT_ENGINE_TYPE=library
 RUN npx prisma generate
 
@@ -34,7 +36,6 @@ EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
   CMD curl -f http://localhost:3000/health || exit 1
 
-# --- THE CRITICAL CHANGE ---
 # 1. Sync the database tables (db push)
-# 2. Start the bot
-CMD ["sh", "-c", "bunx prisma db push && bun run index.ts"]
+# 2. Start the bot using index.ts
+CMD ["sh", "-c", "bunx prisma db push && bun run src/bot.ts"]
