@@ -296,35 +296,45 @@ bot.catch((err, ctx: Context) => {
     console.error('Bot error:', err);
     ctx.reply('❌ An error occurred. Please try again.');
 });
-
 // ==========================================
-// 🌐 OPTIMIZED PRODUCTION HEALTH CHECK SERVER
+// 🌐 FAIL-SAFE PRODUCTION HEALTH CHECK SERVER
 // ==========================================
-// Parse the environment variable strictly to an integer radix to prevent type errors
 const PORT: number = parseInt(process.env.PORT || "8080", 10);
 
-try {
-    createServer((req, res) => {
-        // Handle basic root health verification routing
-        if (req.url === '/' || req.url === '/health') {
-            res.writeHead(200, { 'Content-Type': 'application/json' });
-            return res.end(JSON.stringify({
-                status: 'ok',
-                version: '3.0.0',
-                network: 'mainnet',
-                timestamp: new Date().toISOString(),
-                uptime: process.uptime()
-            }));
-        }
-        
-        // Return clean 404 for random webhook scans
-        res.writeHead(404);
-        res.end();
-    }).listen(PORT, '0.0.0.0', () => {
-        console.log(`🌐 Production health check server active on port ${PORT}`);
-    });
-} catch (serverError) {
-    console.error("⚠️ Health check server initialization warning:", serverError);
+// We define a global tracker to guarantee we never duplicate listeners
+if (!(global as any).httpServerInitialized) {
+    try {
+        const server = createServer((req, res) => {
+            if (req.url === '/' || req.url === '/health') {
+                res.writeHead(200, { 'Content-Type': 'application/json' });
+                return res.end(JSON.stringify({
+                    status: 'ok',
+                    version: '3.0.0',
+                    timestamp: new Date().toISOString(),
+                    uptime: process.uptime()
+                }));
+            }
+            res.writeHead(404);
+            res.end();
+        });
+
+        // Use '0.0.0.0' to accept Railway's external proxy routing cleanly
+        server.listen(PORT, '0.0.0.0', () => {
+            console.log(`🌐 Production health check server running flawlessly on port ${PORT}`);
+        });
+
+        server.on('error', (e: any) => {
+            if (e.code === 'EADDRINUSE') {
+                console.log(`⚠️ Port ${PORT} already captured by a submodule lifecycle thread. Keeping instance alive.`);
+            } else {
+                console.error("❌ Critical Health Server Error:", e);
+            }
+        });
+
+        (global as any).httpServerInitialized = true;
+    } catch (serverError) {
+        console.warn("⚠️ Isolated health check server initialization skipped:", serverError);
+    }
 }
 // Launch
 async function startBot() {
