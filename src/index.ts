@@ -300,7 +300,8 @@ bot.catch((err, ctx: Context) => {
 // ==========================================
 // 🌐 OPTIMIZED PRODUCTION HEALTH CHECK SERVER
 // ==========================================
-const PORT = process.env.PORT || 8080; // Force default to 8080 to cleanly align with Railway's network stack
+// Parse the environment variable strictly to an integer radix to prevent type errors
+const PORT: number = parseInt(process.env.PORT || "8080", 10);
 
 try {
     createServer((req, res) => {
@@ -325,7 +326,6 @@ try {
 } catch (serverError) {
     console.error("⚠️ Health check server initialization warning:", serverError);
 }
-
 // Launch
 async function startBot() {
     try {
