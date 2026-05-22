@@ -297,17 +297,34 @@ bot.catch((err, ctx: Context) => {
     ctx.reply('❌ An error occurred. Please try again.');
 });
 
-// Health check
-const PORT = process.env.PORT || 3000;
-createServer((req, res) => {
-    res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({
-        status: 'ok',
-        version: '2.0.0',
-        timestamp: new Date().toISOString(),
-        uptime: process.uptime()
-    }));
-}).listen(PORT, () => console.log(`🌐 Health check on port ${PORT}`));
+// ==========================================
+// 🌐 OPTIMIZED PRODUCTION HEALTH CHECK SERVER
+// ==========================================
+const PORT = process.env.PORT || 8080; // Force default to 8080 to cleanly align with Railway's network stack
+
+try {
+    createServer((req, res) => {
+        // Handle basic root health verification routing
+        if (req.url === '/' || req.url === '/health') {
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            return res.end(JSON.stringify({
+                status: 'ok',
+                version: '3.0.0',
+                network: 'mainnet',
+                timestamp: new Date().toISOString(),
+                uptime: process.uptime()
+            }));
+        }
+        
+        // Return clean 404 for random webhook scans
+        res.writeHead(404);
+        res.end();
+    }).listen(PORT, '0.0.0.0', () => {
+        console.log(`🌐 Production health check server active on port ${PORT}`);
+    });
+} catch (serverError) {
+    console.error("⚠️ Health check server initialization warning:", serverError);
+}
 
 // Launch
 async function startBot() {
