@@ -51,7 +51,8 @@ export async function getQuote(
 
         let outAmount = "0";
         let priceImpactPct = "0";
-        let raw = null;
+        // ✅ FIX TS2322: Explicitly type `raw` as `any` or `Record<string, any> | null`
+        let raw: any = null;
         let isSimulated = isLocal || network === "devnet";
 
         try {

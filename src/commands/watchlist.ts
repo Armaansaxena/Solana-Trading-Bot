@@ -2,6 +2,7 @@ import { bot } from "../bot";
 import { getQuote, TOKEN_MINTS, formatTokenAmount } from "../services/jupiter";
 import { mainKeyboard } from "../keyboards";
 import { Markup } from "telegraf";
+import { InlineKeyboardButton } from "telegraf/types";
 import { prisma } from "../services/db";
 
 export function registerWatchlistCommands() {
@@ -38,7 +39,6 @@ export function registerWatchlistCommands() {
                 }
             });
 
-            // Get current price
             let price = "N/A";
             try {
                 const quote = await getQuote(token, "USDC", 1);
@@ -111,11 +111,10 @@ async function showWatchlist(ctx: any, userId: number) {
     await ctx.replyWithMarkdown(`⏳ *Loading prices...*`);
 
     let message = `👁️ *Watchlist*\n\n`;
-    const buttons = [];
+    const buttons: InlineKeyboardButton[][] = [];
 
     for (const item of items) {
         let price = "N/A";
-        let change = "";
 
         try {
             const quote = await getQuote(item.token, "USDC", 1);

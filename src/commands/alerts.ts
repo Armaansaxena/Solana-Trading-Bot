@@ -2,6 +2,7 @@ import { bot } from "../bot";
 import { getQuote, TOKEN_MINTS, formatTokenAmount } from "../services/jupiter";
 import { mainKeyboard } from "../keyboards";
 import { Markup } from "telegraf";
+import { InlineKeyboardButton } from "telegraf/types";
 import { prisma } from "../services/db";
 
 export function registerAlertCommands() {
@@ -9,8 +10,6 @@ export function registerAlertCommands() {
     bot.command('alert', async (ctx) => {
         const args = (ctx.message as any).text.split(' ').slice(1);
 
-        // /alert SOL above 200
-        // /alert SOL below 150
         if (args.length !== 3) {
             return ctx.replyWithMarkdown(
                 `🔔 *Price Alerts*\n\n` +
@@ -44,7 +43,6 @@ export function registerAlertCommands() {
 
         const userId = ctx.from.id;
 
-        // Check existing alerts limit
         const existingAlerts = await prisma.alert.count({
             where: { telegramId: BigInt(userId), triggered: false }
         });
@@ -63,7 +61,6 @@ export function registerAlertCommands() {
             }
         });
 
-        // Get current price for reference
         let currentPrice = "N/A";
         try {
             const quote = await getQuote(tokenUpper!, "USDC", 1);
@@ -151,7 +148,7 @@ async function showAlerts(ctx: any, userId: number) {
 
     let message = `🔔 *Price Alerts*\n\n_${alerts.length} active alert(s)_\n\n`;
 
-    const buttons = [];
+    const buttons: InlineKeyboardButton[][] = [];
     for (const alert of alerts) {
         const emoji = alert.condition === 'above' ? '📈' : '📉';
         message += `${emoji} *${alert.token}* ${alert.condition} *$${alert.targetPrice}*\n`;
@@ -181,10 +178,8 @@ export async function startAlertChecker(botInstance: any) {
 
             if (activeAlerts.length === 0) return;
 
-            // Get unique tokens
             const tokens = [...new Set(activeAlerts.map(a => a.token))];
 
-            // Fetch prices for all tokens
             const prices: Record<string, number> = {};
             for (const token of tokens) {
                 try {
@@ -195,7 +190,6 @@ export async function startAlertChecker(botInstance: any) {
                 } catch (e) {}
             }
 
-            // Check each alert
             for (const alert of activeAlerts) {
                 const currentPrice = prices[alert.token];
                 if (!currentPrice) continue;
@@ -205,13 +199,11 @@ export async function startAlertChecker(botInstance: any) {
                     (alert.condition === 'below' && currentPrice <= alert.targetPrice);
 
                 if (triggered) {
-                    // Mark as triggered
                     await prisma.alert.update({
                         where: { id: alert.id },
                         data: { triggered: true }
                     });
 
-                    // Send notification
                     const emoji = alert.condition === 'above' ? '📈' : '📉';
                     await botInstance.telegram.sendMessage(
                         alert.telegramId.toString(),
@@ -226,5 +218,5 @@ export async function startAlertChecker(botInstance: any) {
         } catch (error) {
             console.error("Alert checker error:", error);
         }
-    }, 30000); // every 30 seconds
+    }, 30000);
 }

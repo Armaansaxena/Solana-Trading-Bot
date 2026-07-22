@@ -2,6 +2,7 @@ import { bot } from "../bot";
 import { prisma } from "../services/db";
 import { mainKeyboard } from "../keyboards";
 import { Markup } from "telegraf";
+import { InlineKeyboardButton } from "telegraf/types";
 
 export function registerHistoryCommands() {
 
@@ -73,8 +74,8 @@ async function showHistory(ctx: any, userId: number, page: number = 0) {
         }
 
         // Pagination buttons
-        const buttons = [];
-        const navRow = [];
+        const buttons: InlineKeyboardButton[][] = [];
+        const navRow: InlineKeyboardButton[] = [];
 
         if (page > 0) {
             navRow.push(Markup.button.callback('◀️ Prev', `history_page_${page - 1}`));
