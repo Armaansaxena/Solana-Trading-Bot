@@ -4,7 +4,7 @@ dotenv.config();
 import { bot } from "./bot";
 import { prisma } from "./services/db";
 import { Context, Markup } from "telegraf";
-import { createServer } from "http";
+import { createServer, Server } from "http";
 import { registerWalletCommands } from "./commands/wallet";
 import { registerSwapCommands } from "./commands/swap";
 import { registerPortfolioCommands } from "./commands/portfolio";
@@ -17,6 +17,45 @@ import { registerReferralCommands } from "./commands/referral";
 import { registerAdminCommands } from "./commands/admin";
 import { mainKeyboard, walletKeyboard, toolsKeyboard, moreToolsKeyboard } from "./keyboards";
 import { getNetworkType } from "./services/rpc";
+import { createSolanaWallet } from "./services/solana";
+import { createEVMWallet } from "./services/evm";
+
+// ==========================================
+// 🌐 FAIL-SAFE PRODUCTION HEALTH CHECK SERVER
+// ==========================================
+const PORT: number = parseInt(process.env.PORT || "8080", 10);
+let healthServer: Server | null = null;
+
+// Start server synchronously BEFORE any imported async routes or submodules execute
+if (!process.env.HEALTH_SERVER_STARTED) {
+    process.env.HEALTH_SERVER_STARTED = "true";
+    
+    healthServer = createServer((req, res) => {
+        if (req.url === '/' || req.url === '/health') {
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            return res.end(JSON.stringify({
+                status: 'ok',
+                version: '3.0.0',
+                timestamp: new Date().toISOString(),
+                uptime: process.uptime()
+            }));
+        }
+        res.writeHead(404);
+        res.end();
+    });
+
+    healthServer.listen(PORT, '0.0.0.0', () => {
+        console.log(`🌐 Production health check server running on port ${PORT}`);
+    });
+
+    healthServer.on('error', (e: any) => {
+        if (e.code === 'EADDRINUSE') {
+            console.log(`⚠️ Port ${PORT} already captured. Skipping secondary server start.`);
+        } else {
+            console.error("❌ Health Server Error:", e);
+        }
+    });
+}
 
 // Global debug middleware
 bot.use((ctx, next) => {
@@ -124,9 +163,6 @@ bot.action('switch_chain_menu', async (ctx) => {
     }
 });
 
-import { createSolanaWallet } from "./services/solana";
-import { createEVMWallet } from "./services/evm";
-
 bot.action(/^confirm_switch_chain_(solana|ethereum|base)$/, async (ctx) => {
     const newChain = (ctx as any).match[1];
     const userId = ctx.from!.id;
@@ -142,7 +178,6 @@ bot.action(/^confirm_switch_chain_(solana|ethereum|base)$/, async (ctx) => {
         const chainType = (newChain === 'ethereum' || newChain === 'base') ? 'evm' : 'solana';
         let correctWallet = user.wallets.find(w => w.chain === chainType);
 
-        // AUTO-GENERATE MISSING WALLET TYPE
         if (!correctWallet) {
             console.log(`🛠️ Auto-generating missing ${chainType} wallet for user ${userId}`);
             if (chainType === 'evm') {
@@ -162,7 +197,6 @@ bot.action(/^confirm_switch_chain_(solana|ethereum|base)$/, async (ctx) => {
 
         await ctx.answerCbQuery(`✅ Switched to ${newChain.toUpperCase()}`);
         
-        // Refresh view
         const userAfter = await prisma.user.findUnique({
             where: { telegramId: BigInt(userId) },
             include: { wallets: true }
@@ -296,46 +330,7 @@ bot.catch((err, ctx: Context) => {
     console.error('Bot error:', err);
     ctx.reply('❌ An error occurred. Please try again.');
 });
-// ==========================================
-// 🌐 FAIL-SAFE PRODUCTION HEALTH CHECK SERVER
-// ==========================================
-const PORT: number = parseInt(process.env.PORT || "8080", 10);
 
-// We define a global tracker to guarantee we never duplicate listeners
-if (!(global as any).httpServerInitialized) {
-    try {
-        const server = createServer((req, res) => {
-            if (req.url === '/' || req.url === '/health') {
-                res.writeHead(200, { 'Content-Type': 'application/json' });
-                return res.end(JSON.stringify({
-                    status: 'ok',
-                    version: '3.0.0',
-                    timestamp: new Date().toISOString(),
-                    uptime: process.uptime()
-                }));
-            }
-            res.writeHead(404);
-            res.end();
-        });
-
-        // Use '0.0.0.0' to accept Railway's external proxy routing cleanly
-        server.listen(PORT, '0.0.0.0', () => {
-            console.log(`🌐 Production health check server running flawlessly on port ${PORT}`);
-        });
-
-        server.on('error', (e: any) => {
-            if (e.code === 'EADDRINUSE') {
-                console.log(`⚠️ Port ${PORT} already captured by a submodule lifecycle thread. Keeping instance alive.`);
-            } else {
-                console.error("❌ Critical Health Server Error:", e);
-            }
-        });
-
-        (global as any).httpServerInitialized = true;
-    } catch (serverError) {
-        console.warn("⚠️ Isolated health check server initialization skipped:", serverError);
-    }
-}
 // Launch
 async function startBot() {
     try {
@@ -372,5 +367,13 @@ async function startBot() {
 }
 
 startBot();
-process.once('SIGINT', () => bot.stop('SIGINT'));
-process.once('SIGTERM', () => bot.stop('SIGTERM'));
+
+process.once('SIGINT', () => {
+    if (healthServer) healthServer.close();
+    bot.stop('SIGINT');
+});
+
+process.once('SIGTERM', () => {
+    if (healthServer) healthServer.close();
+    bot.stop('SIGTERM');
+});
