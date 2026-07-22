@@ -2,7 +2,7 @@ import { bot } from "../bot";
 import { prisma } from "../services/db";
 import { mainKeyboard } from "../keyboards";
 import { Markup } from "telegraf";
-import { InlineKeyboardButton } from "telegraf/types";
+import type { InlineKeyboardButton } from "telegraf/types";
 
 export function registerHistoryCommands() {
 
