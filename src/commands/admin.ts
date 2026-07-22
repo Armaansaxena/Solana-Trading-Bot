@@ -2,6 +2,7 @@ import { bot } from "../bot";
 import { getNetworkType, setNetworkType } from "../services/rpc";
 import { getFeePercentage, setFeePercentage, setSession } from "../services/redis";
 import { Markup } from "telegraf";
+import { InlineKeyboardButton } from "telegraf/types";
 import * as dotenv from "dotenv";
 
 dotenv.config();
@@ -133,7 +134,7 @@ export function registerAdminCommands() {
                       `🔐 *Encryption:* AES-256-GCM\n` +
                       `📡 *RPC Status:* Optimal\n\n`;
         
-        const buttons = [];
+        const buttons: InlineKeyboardButton[][] = [];
         if (isDev) {
             buttons.push([Markup.button.callback(`🛠️ Open Admin Panel`, `admin_main_menu`)]);
         }
