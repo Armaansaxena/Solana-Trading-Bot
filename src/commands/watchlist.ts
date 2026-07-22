@@ -2,7 +2,7 @@ import { bot } from "../bot";
 import { getQuote, TOKEN_MINTS, formatTokenAmount } from "../services/jupiter";
 import { mainKeyboard } from "../keyboards";
 import { Markup } from "telegraf";
-import { InlineKeyboardButton } from "telegraf/types";
+import type { InlineKeyboardButton } from "telegraf/types";
 import { prisma } from "../services/db";
 
 export function registerWatchlistCommands() {

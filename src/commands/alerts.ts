@@ -2,7 +2,7 @@ import { bot } from "../bot";
 import { getQuote, TOKEN_MINTS, formatTokenAmount } from "../services/jupiter";
 import { mainKeyboard } from "../keyboards";
 import { Markup } from "telegraf";
-import { InlineKeyboardButton } from "telegraf/types";
+import type { InlineKeyboardButton } from "telegraf/types";
 import { prisma } from "../services/db";
 
 export function registerAlertCommands() {
@@ -178,7 +178,8 @@ export async function startAlertChecker(botInstance: any) {
 
             if (activeAlerts.length === 0) return;
 
-            const tokens = [...new Set(activeAlerts.map(a => a.token))];
+            // ✅ FIXED: Explicitly cast tokens as string[]
+            const tokens: string[] = Array.from(new Set(activeAlerts.map((a: { token: string }) => a.token)));
 
             const prices: Record<string, number> = {};
             for (const token of tokens) {
