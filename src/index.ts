@@ -27,37 +27,6 @@ const PORT: number = parseInt(process.env.PORT || "8080", 10);
 const RENDER_URL = process.env.RENDER_EXTERNAL_URL; // Automatically injected by Render
 let healthServer: Server | null = null;
 
-// Start server synchronously BEFORE any imported async routes or submodules execute
-if (!process.env.HEALTH_SERVER_STARTED) {
-    process.env.HEALTH_SERVER_STARTED = "true";
-    
-    healthServer = createServer((req, res) => {
-        if (req.url === '/' || req.url === '/health') {
-            res.writeHead(200, { 'Content-Type': 'application/json' });
-            return res.end(JSON.stringify({
-                status: 'ok',
-                version: '3.0.0',
-                timestamp: new Date().toISOString(),
-                uptime: process.uptime()
-            }));
-        }
-        res.writeHead(404);
-        res.end();
-    });
-
-    healthServer.listen(PORT, '0.0.0.0', () => {
-        console.log(`🌐 Production health check server running on port ${PORT}`);
-    });
-
-    healthServer.on('error', (e: any) => {
-        if (e.code === 'EADDRINUSE') {
-            console.log(`⚠️ Port ${PORT} already captured. Skipping secondary server start.`);
-        } else {
-            console.error("❌ Health Server Error:", e);
-        }
-    });
-}
-
 // Global debug middleware
 bot.use((ctx, next) => {
     console.log("📨 Update:", ctx.updateType);

@@ -8,10 +8,6 @@ import http from 'http';
 
 // Dummy server for Render health checks
 const port = process.env.PORT || 3000;
-http.createServer((req, res) => {
-  res.writeHead(200);
-  res.end('Bot is running');
-}).listen(port);
 
 console.log(`Health check server listening on port ${port}`);
 
