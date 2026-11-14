@@ -24,6 +24,7 @@ import { createEVMWallet } from "./services/evm";
 // 🌐 FAIL-SAFE PRODUCTION HEALTH CHECK SERVER
 // ==========================================
 const PORT: number = parseInt(process.env.PORT || "8080", 10);
+const RENDER_URL = process.env.RENDER_EXTERNAL_URL; // Automatically injected by Render
 let healthServer: Server | null = null;
 
 // Start server synchronously BEFORE any imported async routes or submodules execute
@@ -330,8 +331,6 @@ bot.catch((err, ctx: Context) => {
     console.error('Bot error:', err);
     ctx.reply('❌ An error occurred. Please try again.');
 });
-
-// Launch
 async function startBot() {
     try {
         await prisma.$connect();
@@ -356,9 +355,57 @@ async function startBot() {
         ]);
         console.log("✅ Commands registered");
 
-        console.log("🚀 Launching bot...");
-        bot.launch({ dropPendingUpdates: true });
-        console.log("✅ SolBot V3 is live!");
+        if (RENDER_URL) {
+            // Production (Render): Use Webhook + Health Check on the same PORT (Zero 409 conflicts)
+            const webhookPath = `/telegraf/${bot.secretPathComponent()}`;
+            const webhookCallback = bot.webhookCallback(webhookPath);
+
+            await bot.telegram.setWebhook(`${RENDER_URL}${webhookPath}`, {
+                drop_pending_updates: true,
+            });
+
+            healthServer = createServer((req, res) => {
+                if (req.url === webhookPath && req.method === 'POST') {
+                    return webhookCallback(req, res);
+                }
+                if (req.url === '/' || req.url === '/health') {
+                    res.writeHead(200, { 'Content-Type': 'application/json' });
+                    return res.end(JSON.stringify({
+                        status: 'ok',
+                        mode: 'webhook',
+                        version: '3.0.0',
+                        timestamp: new Date().toISOString(),
+                        uptime: process.uptime(),
+                    }));
+                }
+                res.writeHead(404);
+                res.end();
+            });
+
+            healthServer.listen(PORT, '0.0.0.0', () => {
+                console.log(`🌐 Webhook & health server live on port ${PORT}`);
+                console.log("✅ SolBot V3 is live via Webhook!");
+            });
+        } else {
+            // Local Development: Use Long-Polling + Health Check Server
+            healthServer = createServer((req, res) => {
+                if (req.url === '/' || req.url === '/health') {
+                    res.writeHead(200, { 'Content-Type': 'application/json' });
+                    return res.end(JSON.stringify({ status: 'ok', mode: 'polling' }));
+                }
+                res.writeHead(404);
+                res.end();
+            });
+
+            healthServer.listen(PORT, '0.0.0.0', () => {
+                console.log(`🌐 Local health check server running on port ${PORT}`);
+            });
+
+            console.log("🚀 Launching bot locally via polling...");
+            bot.launch({ dropPendingUpdates: true });
+            console.log("✅ SolBot V3 is live locally!");
+        }
+
         startAlertChecker(bot);
     } catch (error) {
         console.error("❌ Startup failed:", error);
@@ -368,34 +415,13 @@ async function startBot() {
 
 startBot();
 
-process.once('SIGINT', () => {
+// Single clean graceful shutdown handler
+const shutdown = (signal: string) => {
+    console.log(`🛑 Received ${signal}, shutting down...`);
     if (healthServer) healthServer.close();
-    bot.stop('SIGINT');
-});
+    if (!RENDER_URL) bot.stop(signal);
+    process.exit(0);
+};
 
-process.once('SIGTERM', () => {
-    if (healthServer) healthServer.close();
-    bot.stop('SIGTERM');
-});
-
-async function launchWithRetry(retries = 5) {
-  for (let i = 0; i < retries; i++) {
-    try {
-      await bot.launch({ dropPendingUpdates: true });
-      return;
-    } catch (err: any) {
-      if (err?.response?.error_code === 409 && i < retries - 1) {
-        console.log(`⚠️ 409 Conflict during rollover, retrying in 5s (${i + 1}/${retries})...`);
-        await new Promise((res) => setTimeout(res, 5000));
-      } else {
-        throw err;
-      }
-    }
-  }
-}
-
-// Enable graceful stop so Render shuts down old instances cleanly
-process.once('SIGINT', () => bot.stop('SIGINT'));
-process.once('SIGTERM', () => bot.stop('SIGTERM'));
-
-launchWithRetry();
+process.once('SIGINT', () => shutdown('SIGINT'));
+process.once('SIGTERM', () => shutdown('SIGTERM'));
