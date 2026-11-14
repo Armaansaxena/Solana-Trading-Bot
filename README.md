@@ -3,24 +3,26 @@
 <div align="center">
 
 ![Version](https://img.shields.io/badge/Version-3.0.0--alpha-orange)
-![Status](https://img.shields.io/badge/Status-Alpha%20Preview-yellow)
+![Status](https://img.shields.io/badge/Status-Live%20(Alpha)-brightgreen)
 ![Solana](https://img.shields.io/badge/Solana-Web3-purple)
 ![Multi-Chain](https://img.shields.io/badge/Chains-Solana%20|%20Ethereum%20|%20Base-blue)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5-blue)
 
 ### ⚡ Secure, AI-Powered DeFi Trading Bot with Real-Time Execution
 
-**SolBot V3** is a production-grade trading engine that enables **automated trading, portfolio management, and token launches** across Solana, Ethereum, and Base, featuring **secure key handling and real-time monitoring via Telegram**.
+**SolBot V3** (`ArmSol`) is a production-grade trading engine that enables **automated trading, portfolio management, and token launches** across Solana, Ethereum, and Base, featuring **secure key handling and real-time monitoring via Telegram**.
 
 ---
 
-## 🎥 Demo Video
+## 🔗 Live Links & Proof of Work
 
-👉 Watch the bot in action: https://youtu.be/lnwwbN_f3Yg?si=o-x079ibP0ZT5v9B
-
-## 🔗 Live Demo
-
-👉 Try the bot here: https://t.me/ArmEthSol_bot
+| Resource | Link |
+| :--- | :--- |
+| 🤖 **Live Telegram Bot** | [@ArmEthSol_bot](https://t.me/ArmEthSol_bot) |
+| 🌐 **Production Backend & Health API** | [solana-trading-bot-hbam.onrender.com/health](https://solana-trading-bot-hbam.onrender.com/health) |
+| 🔍 **On-Chain Treasury & Routing Proof** | [Solscan Explorer](https://solscan.io/account/295xHHtt5sMKhmc1JDvXBP1xBpMx1z2pMCbspzoATTXp) |
+| 🎥 **Demo Video** | [Watch on YouTube](https://youtu.be/lnwwbN_f3Yg?si=o-x079ibP0ZT5v9B) |
+| 💻 **Source Repository** | [github.com/Armaansaxena/Solana-Trading-Bot](https://github.com/Armaansaxena/Solana-Trading-Bot) |
 
 </div>
 
