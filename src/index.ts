@@ -377,3 +377,25 @@ process.once('SIGTERM', () => {
     if (healthServer) healthServer.close();
     bot.stop('SIGTERM');
 });
+
+async function launchWithRetry(retries = 5) {
+  for (let i = 0; i < retries; i++) {
+    try {
+      await bot.launch({ dropPendingUpdates: true });
+      return;
+    } catch (err: any) {
+      if (err?.response?.error_code === 409 && i < retries - 1) {
+        console.log(`⚠️ 409 Conflict during rollover, retrying in 5s (${i + 1}/${retries})...`);
+        await new Promise((res) => setTimeout(res, 5000));
+      } else {
+        throw err;
+      }
+    }
+  }
+}
+
+// Enable graceful stop so Render shuts down old instances cleanly
+process.once('SIGINT', () => bot.stop('SIGINT'));
+process.once('SIGTERM', () => bot.stop('SIGTERM'));
+
+launchWithRetry();
