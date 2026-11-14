@@ -357,7 +357,7 @@ async function startBot() {
         console.log("✅ Commands registered");
 
         console.log("🚀 Launching bot...");
-        bot.launch();
+        bot.launch({ dropPendingUpdates: true });
         console.log("✅ SolBot V3 is live!");
         startAlertChecker(bot);
     } catch (error) {

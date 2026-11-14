@@ -37,7 +37,8 @@
     "groq-sdk": "^1.1.1",
     "pg": "^8.20.0",
     "postinstall": "^0.11.2",
-    "telegraf": "^4.16.3"
+    "telegraf": "^4.16.3",
+    "tsx": "^4.21.0"
   },
   "devDependencies": {
     "@types/node": "^20.17.10",
@@ -47,7 +48,6 @@
     "prisma": "^7.5.0",
     "ts-node": "^10.9.2",
     "ts-node-dev": "^2.0.0",
-    "tsx": "^4.21.0",
     "typescript": "^5.7.3"
   }
 }

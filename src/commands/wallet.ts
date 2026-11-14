@@ -373,12 +373,31 @@ export function registerWalletCommands() {
 
   bot.action(/^confirm_switch_wallet_(\d+)$/, async (ctx) => {
     const walletId = parseInt((ctx as any).match[1]);
-    await prisma.user.update({
-      where: { telegramId: BigInt(ctx.from!.id) },
-      data: { activeWalletId: walletId }
+    const userId = ctx.from!.id;
+
+    const user = await prisma.user.update({
+      where: { telegramId: BigInt(userId) },
+      data: { activeWalletId: walletId },
+      include: { wallets: true }
     });
-    await ctx.answerCbQuery("✅ Switched!");
-    return (bot.handleUpdate as any)(ctx.update);
+
+    await ctx.answerCbQuery('✅ Switched!').catch(() => {});
+
+    const buttons = user.wallets
+      .filter(w => w.chain === (user.activeChain === "solana" ? "solana" : "evm"))
+      .map(w => [
+        Markup.button.callback(
+          `${w.id === user.activeWalletId ? '✅ ' : ''}${w.name}`,
+          `confirm_switch_wallet_${w.id}`
+        )
+      ]);
+
+    buttons.push([Markup.button.callback("🔙 Back", "wallet_menu")]);
+
+    return ctx.editMessageText("🔄 *Switch Wallet*", {
+      parse_mode: "Markdown",
+      ...Markup.inlineKeyboard(buttons)
+    }).catch(() => {}); // Catches "message is not modified" if they click the already-active wallet
   });
 
   bot.action("confirm_ai_send", async (ctx) => {
